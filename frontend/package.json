@@ -1,0 +1,12 @@
+{
+  "name": "composer-drupal-update-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vitest": "^3"
+  },
+  "packageManager": "yarn@4.12.0"
+}

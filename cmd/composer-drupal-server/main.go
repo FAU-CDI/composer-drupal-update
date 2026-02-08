@@ -16,32 +16,35 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// API routes (register each route explicitly to avoid method conflicts)
+	// API routes
 	client := drupalupdate.NewClient()
 	api := drupalupdate.NewServer(client)
 	mux.Handle("POST /api/parse", api)
 	mux.Handle("GET /api/releases", api)
 	mux.Handle("POST /api/update", api)
 
-	// Serve the OpenAPI spec (embedded in the drupalupdate package)
+	// Serve the OpenAPI spec
 	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
 		w.Write(drupalupdate.OpenAPISpec)
 	})
 
-	// Swagger UI
+	// Swagger UI at /doc/
 	mux.Handle("GET /doc/", v5emb.New(
 		"Composer Drupal Update API",
 		"/openapi.yaml",
 		"/doc/",
 	))
 
-	// Redirect root to docs
-	mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/doc/", http.StatusFound)
-	})
+	// Frontend at /
+	frontendFiles, err := drupalupdate.FrontendFS()
+	if err != nil {
+		log.Fatalf("failed to load frontend: %v", err)
+	}
+	mux.Handle("GET /", http.FileServer(http.FS(frontendFiles)))
 
 	fmt.Printf("Starting server on %s\n", *addr)
+	fmt.Printf("  App:     http://localhost%s/\n", *addr)
 	fmt.Printf("  API:     http://localhost%s/api/\n", *addr)
 	fmt.Printf("  Docs:    http://localhost%s/doc/\n", *addr)
 	fmt.Printf("  Spec:    http://localhost%s/openapi.yaml\n", *addr)
