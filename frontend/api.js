@@ -19,6 +19,7 @@
  * @typedef {Object} Release
  * @property {string} name
  * @property {string} version
+ * @property {string} version_pin
  * @property {string} [core_compatibility]
  */
 
@@ -137,7 +138,7 @@ export function buildVersionMap(packages) {
 
 /**
  * Build a list of composer commands that apply the given requirements.
- * Returns one "composer require" per package, followed by "composer update --dry-run".
+ * Returns one "composer require ... --no-update" per package, followed by "composer update".
  * @param {Record<string, string>} versions - map of package name to version constraint
  * @returns {string[]}
  */
@@ -148,7 +149,20 @@ export function buildComposerCommands(versions) {
     commands.push(`composer require "${pkg}:${version}" --no-update`);
   }
   if (commands.length > 0) {
-    commands.push("composer update --dry-run");
+    commands.push("composer update");
   }
   return commands;
+}
+
+/**
+ * Build a single composer require command with --dry-run to simulate the upgrade.
+ * All packages are passed in one invocation so composer can check compatibility.
+ * @param {Record<string, string>} versions - map of package name to version constraint
+ * @returns {string}
+ */
+export function buildDryRunCommand(versions) {
+  const args = Object.entries(versions)
+    .map(([pkg, version]) => `"${pkg}:${version}"`)
+    .join(" ");
+  return args ? `composer require ${args} --dry-run` : "";
 }

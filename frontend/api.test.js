@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { postJSON, getJSON, parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands } from "./api.js";
+import { postJSON, getJSON, parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands, buildDryRunCommand } from "./api.js";
 
 // =============================================================================
 // Mock fetch
@@ -203,7 +203,7 @@ describe("buildVersionMap", () => {
 // =============================================================================
 
 describe("buildComposerCommands", () => {
-  it("generates require commands followed by update --dry-run", () => {
+  it("generates require commands followed by composer update", () => {
     const versions = {
       "drupal/gin": "^6.0",
       "drush/drush": "^13",
@@ -214,7 +214,7 @@ describe("buildComposerCommands", () => {
     expect(commands).toHaveLength(3);
     expect(commands[0]).toBe('composer require "drupal/gin:^6.0" --no-update');
     expect(commands[1]).toBe('composer require "drush/drush:^13" --no-update');
-    expect(commands[2]).toBe("composer update --dry-run");
+    expect(commands[2]).toBe("composer update");
   });
 
   it("returns a single require + update for one change", () => {
@@ -222,11 +222,37 @@ describe("buildComposerCommands", () => {
 
     expect(commands).toEqual([
       'composer require "drupal/book:^3.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
   });
 
   it("returns empty array when no versions given", () => {
     expect(buildComposerCommands({})).toEqual([]);
+  });
+});
+
+// =============================================================================
+// buildDryRunCommand
+// =============================================================================
+
+describe("buildDryRunCommand", () => {
+  it("generates a single require command with --dry-run", () => {
+    const versions = {
+      "drupal/gin": "^6.0",
+      "drush/drush": "^13",
+    };
+
+    const cmd = buildDryRunCommand(versions);
+
+    expect(cmd).toBe('composer require "drupal/gin:^6.0" "drush/drush:^13" --dry-run');
+  });
+
+  it("works with a single package", () => {
+    const cmd = buildDryRunCommand({ "drupal/book": "^3.0" });
+    expect(cmd).toBe('composer require "drupal/book:^3.0" --dry-run');
+  });
+
+  it("returns empty string when no versions given", () => {
+    expect(buildDryRunCommand({})).toBe("");
   });
 });

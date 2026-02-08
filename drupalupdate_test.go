@@ -344,6 +344,66 @@ func TestComposerPackages_Empty(t *testing.T) {
 }
 
 // =============================================================================
+// VersionPin
+// =============================================================================
+
+func TestVersionPin(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"5.0.3", "^5.0"},
+		{"4.0.2", "^4.0"},
+		{"3.0.5", "^3.0"},
+		{"11.1.0", "^11.1"},
+		{"10.4.3", "^10.4"},
+		{"13.0.1", "^13.0"},
+		{"2.1.0", "^2.1"},
+		{"3.16", "^3.16"},
+		{"8.x-3.16", "^3.16"},
+		{"8.x-1.5", "^1.5"},
+		{"8.x-2.0", "^2.0"},
+		{"1.0.0", "^1.0"},
+		{"0.5.0", "^0.5"},
+		// RC versions
+		{"8.x-1.0-rc17", "^1.0@RC"},
+		{"3.0.0-rc21", "^3.0@RC"},
+		{"2.1.0-RC3", "^2.1@RC"},
+		// Beta versions
+		{"2.0.0-beta3", "^2.0@beta"},
+		{"8.x-4.0-beta1", "^4.0@beta"},
+		// Alpha versions
+		{"1.0.0-alpha1", "^1.0@alpha"},
+		{"8.x-2.0-alpha5", "^2.0@alpha"},
+		// Edge case: single part
+		{"42", "^42"},
+	}
+	for _, tt := range tests {
+		if got := drupalupdate.VersionPin(tt.input); got != tt.want {
+			t.Errorf("VersionPin(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestSortReleasesDescending(t *testing.T) {
+	releases := []drupalupdate.Release{
+		{Version: "3.0.5"},
+		{Version: "11.1.0"},
+		{Version: "4.0.2"},
+		{Version: "10.4.3"},
+		{Version: "8.x-1.5"},
+		{Version: "11.0.8"},
+	}
+	drupalupdate.SortReleasesDescending(releases)
+	expected := []string{"11.1.0", "11.0.8", "10.4.3", "4.0.2", "3.0.5", "8.x-1.5"}
+	for i, want := range expected {
+		if releases[i].Version != want {
+			t.Errorf("index %d: expected %s, got %s", i, want, releases[i].Version)
+		}
+	}
+}
+
+// =============================================================================
 // CorePackages
 // =============================================================================
 
@@ -596,6 +656,13 @@ func TestLatestStablePerMajor(t *testing.T) {
 	if got[0].CoreCompatibility != "" {
 		t.Errorf("expected empty core_compatibility, got %s", got[0].CoreCompatibility)
 	}
+	// VersionPin should drop patch
+	if got[0].VersionPin != "^13.0" {
+		t.Errorf("expected version pin '^13.0', got %s", got[0].VersionPin)
+	}
+	if got[1].VersionPin != "^12.5" {
+		t.Errorf("expected version pin '^12.5', got %s", got[1].VersionPin)
+	}
 }
 
 func TestLatestStablePerMajor_StripsVPrefix(t *testing.T) {
@@ -686,18 +753,24 @@ func TestFetchReleases(t *testing.T) {
 		t.Fatalf("FetchReleases returned error: %v", err)
 	}
 
-	// Should return latest per branch: 3.0.5 and 4.0.2
+	// Should return latest per branch, sorted newest first: 4.0.2, 3.0.5
 	if len(releases) != 2 {
 		t.Fatalf("expected 2 releases, got %d", len(releases))
 	}
-	if releases[0].Version != "3.0.5" {
-		t.Errorf("expected 3.0.5, got %s", releases[0].Version)
+	if releases[0].Version != "4.0.2" {
+		t.Errorf("expected 4.0.2, got %s", releases[0].Version)
 	}
-	if releases[1].Version != "4.0.2" {
-		t.Errorf("expected 4.0.2, got %s", releases[1].Version)
+	if releases[1].Version != "3.0.5" {
+		t.Errorf("expected 3.0.5, got %s", releases[1].Version)
 	}
-	if releases[1].CoreCompatibility != "^10.3 || ^11" {
-		t.Errorf("expected core compat '^10.3 || ^11', got %s", releases[1].CoreCompatibility)
+	if releases[0].CoreCompatibility != "^10.3 || ^11" {
+		t.Errorf("expected core compat '^10.3 || ^11', got %s", releases[0].CoreCompatibility)
+	}
+	if releases[0].VersionPin != "^4.0" {
+		t.Errorf("expected version pin '^4.0', got %s", releases[0].VersionPin)
+	}
+	if releases[1].VersionPin != "^3.0" {
+		t.Errorf("expected version pin '^3.0', got %s", releases[1].VersionPin)
 	}
 }
 
@@ -879,14 +952,15 @@ func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
 	if len(releases) != 3 {
 		t.Fatalf("expected 3 releases, got %d: %+v", len(releases), releases)
 	}
-	if releases[0].Version != "10.4.3" {
-		t.Errorf("expected 10.4.3, got %s", releases[0].Version)
+	// Should be sorted newest first
+	if releases[0].Version != "11.1.0" {
+		t.Errorf("expected 11.1.0, got %s", releases[0].Version)
 	}
 	if releases[1].Version != "11.0.8" {
 		t.Errorf("expected 11.0.8, got %s", releases[1].Version)
 	}
-	if releases[2].Version != "11.1.0" {
-		t.Errorf("expected 11.1.0, got %s", releases[2].Version)
+	if releases[2].Version != "10.4.3" {
+		t.Errorf("expected 10.4.3, got %s", releases[2].Version)
 	}
 }
 

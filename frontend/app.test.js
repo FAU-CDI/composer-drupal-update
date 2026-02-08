@@ -18,6 +18,7 @@ const HTML = `
     <div class="actions">
       <button id="btn-edit">Edit</button>
       <button id="btn-download">Download</button>
+      <button id="btn-copy-json">Copy</button>
     </div>
     <div id="drop-zone" class="drop-zone">Drop or click to upload</div>
     <input type="file" id="file-input" accept=".json" hidden>
@@ -25,19 +26,26 @@ const HTML = `
   <div id="tab-packages" class="tab-panel">
     <div class="actions">
       <button id="btn-apply" disabled>Apply</button>
+      <button id="btn-revert" disabled>Revert</button>
     </div>
     <table id="packages-table">
-      <thead><tr><th>Package</th><th>Current</th><th>Available</th></tr></thead>
+      <thead><tr><th>Package</th><th>Current</th><th>Drupal Core</th><th>Available</th></tr></thead>
       <tbody id="packages-body">
-        <tr><td colspan="3">No composer.json loaded yet.</td></tr>
+        <tr><td colspan="4">No composer.json loaded yet.</td></tr>
       </tbody>
     </table>
   </div>
   <div id="tab-commands" class="tab-panel">
     <p id="commands-empty">Load a composer.json to see commands.</p>
-    <pre id="commands-output" hidden></pre>
-    <div class="commands-actions">
-      <button id="btn-copy" hidden>Copy</button>
+    <div id="commands-apply-section" hidden>
+      <h3>Apply</h3>
+      <pre id="commands-apply-output"></pre>
+      <div class="commands-actions"><button id="btn-copy-apply">Copy</button></div>
+    </div>
+    <div id="commands-dryrun-section" hidden>
+      <h3>Dry Run</h3>
+      <pre id="commands-dryrun-output"></pre>
+      <div class="commands-actions"><button id="btn-copy-dryrun">Copy</button></div>
     </div>
   </div>
   <div id="tab-help" class="tab-panel"><p>Help content</p></div>
@@ -66,6 +74,7 @@ let mockFetchReleases;
 let mockUpdateComposer;
 let mockBuildVersionMap;
 let mockBuildComposerCommands;
+let mockBuildDryRunCommand;
 
 beforeEach(async () => {
   vi.resetModules();
@@ -78,6 +87,7 @@ beforeEach(async () => {
   mockUpdateComposer = vi.fn();
   mockBuildVersionMap = vi.fn().mockReturnValue({});
   mockBuildComposerCommands = vi.fn().mockReturnValue([]);
+  mockBuildDryRunCommand = vi.fn().mockReturnValue("");
 
   vi.doMock("./api.js", () => ({
     parseComposer: mockParseComposer,
@@ -85,6 +95,7 @@ beforeEach(async () => {
     updateComposer: mockUpdateComposer,
     buildVersionMap: mockBuildVersionMap,
     buildComposerCommands: mockBuildComposerCommands,
+    buildDryRunCommand: mockBuildDryRunCommand,
   }));
 
   // Mock clipboard API
@@ -248,11 +259,12 @@ describe("Status messages", () => {
 // =============================================================================
 
 describe("Commands visibility", () => {
-  it("shows commands when textarea has valid composer.json with require", () => {
+  it("shows both command sections when textarea has valid composer.json with require", () => {
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
+    mockBuildDryRunCommand.mockReturnValue('composer require "drupal/gin:^5.0" --dry-run');
 
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
@@ -262,25 +274,27 @@ describe("Commands visibility", () => {
     $("#btn-edit").click();
     $("#btn-edit").click();
 
-    expect($("#commands-output").hidden).toBe(false);
+    expect($("#commands-apply-section").hidden).toBe(false);
+    expect($("#commands-dryrun-section").hidden).toBe(false);
     expect($("#commands-empty").hidden).toBe(true);
-    expect($("#btn-copy").hidden).toBe(false);
   });
 
-  it("hides commands when textarea is empty", () => {
+  it("hides command sections when textarea is empty", () => {
     mockBuildComposerCommands.mockReturnValue([]);
+    mockBuildDryRunCommand.mockReturnValue("");
 
     $("#btn-edit").click();
     $("#composer-textarea").value = "";
     $("#btn-edit").click();
 
-    expect($("#commands-output").hidden).toBe(true);
+    expect($("#commands-apply-section").hidden).toBe(true);
+    expect($("#commands-dryrun-section").hidden).toBe(true);
     expect($("#commands-empty").hidden).toBe(false);
-    expect($("#btn-copy").hidden).toBe(true);
   });
 
-  it("hides commands when JSON has no require", () => {
+  it("hides command sections when JSON has no require", () => {
     mockBuildComposerCommands.mockReturnValue([]);
+    mockBuildDryRunCommand.mockReturnValue("");
 
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ name: "test" });
@@ -289,8 +303,8 @@ describe("Commands visibility", () => {
     $("#btn-edit").click();
     $("#btn-edit").click();
 
-    expect($("#commands-output").hidden).toBe(true);
-    expect($("#btn-copy").hidden).toBe(true);
+    expect($("#commands-apply-section").hidden).toBe(true);
+    expect($("#commands-dryrun-section").hidden).toBe(true);
   });
 });
 
@@ -298,34 +312,38 @@ describe("Commands visibility", () => {
 // Copy Button
 // =============================================================================
 
-describe("Copy button", () => {
-  it("starts hidden", () => {
-    expect($("#btn-copy").hidden).toBe(true);
-  });
+describe("Copy buttons", () => {
+  it("copies apply commands to clipboard", async () => {
+    const output = $("#commands-apply-output");
+    output.textContent = "composer require \"drupal/gin:^5.0\" --no-update\ncomposer update";
 
-  it("copies commands to clipboard on click", async () => {
-    // Set up commands output manually
-    const output = $("#commands-output");
-    output.textContent = "composer require \"drupal/gin:^5.0\" --no-update\ncomposer update --dry-run";
-    output.hidden = false;
-    $("#btn-copy").hidden = false;
-
-    $("#btn-copy").click();
+    $("#btn-copy-apply").click();
     await flushPromises();
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(output.textContent);
+    expect($("#btn-copy-apply").textContent).toBe("Copied!");
   });
 
-  it("shows 'Copied!' feedback after copying", async () => {
-    const output = $("#commands-output");
-    output.textContent = "some command";
-    output.hidden = false;
-    $("#btn-copy").hidden = false;
+  it("copies dry-run command to clipboard", async () => {
+    const output = $("#commands-dryrun-output");
+    output.textContent = 'composer require "drupal/gin:^5.0" --dry-run';
 
-    $("#btn-copy").click();
+    $("#btn-copy-dryrun").click();
     await flushPromises();
 
-    expect($("#btn-copy").textContent).toBe("Copied!");
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(output.textContent);
+    expect($("#btn-copy-dryrun").textContent).toBe("Copied!");
+  });
+
+  it("copies composer.json textarea content to clipboard", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = '{"require": {}}';
+
+    $("#btn-copy-json").click();
+    await flushPromises();
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith('{"require": {}}');
+    expect($("#btn-copy-json").textContent).toBe("Copied!");
   });
 });
 
@@ -348,11 +366,11 @@ describe("Packages tab dirty indicator", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
+      releases: [{ name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     // Trigger loadComposer via edit toggle
@@ -371,7 +389,7 @@ describe("Packages tab dirty indicator", () => {
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages");
 
     // Change dropdown to a different version
-    select.value = "^6.0.0";
+    select.value = "^6.0";
     select.dispatchEvent(new Event("change"));
 
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
@@ -386,11 +404,11 @@ describe("Packages tab dirty indicator", () => {
       composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1" }],
+      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1", version_pin: "^13.0" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drush/drush:^12" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -401,7 +419,7 @@ describe("Packages tab dirty indicator", () => {
     const select = $("#select-drush\\/drush");
     expect(select).toBeTruthy();
 
-    select.value = "^13.0.1";
+    select.value = "^13.0";
     select.dispatchEvent(new Event("change"));
 
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
@@ -416,11 +434,11 @@ describe("Packages tab dirty indicator", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
+      releases: [{ name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -431,7 +449,7 @@ describe("Packages tab dirty indicator", () => {
     const select = $("#select-drupal\\/gin");
 
     // Change to new version
-    select.value = "^6.0.0";
+    select.value = "^6.0";
     select.dispatchEvent(new Event("change"));
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
 
@@ -450,11 +468,11 @@ describe("Packages tab dirty indicator", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
+      releases: [{ name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -467,7 +485,7 @@ describe("Packages tab dirty indicator", () => {
 
     // Change version -> enabled
     const select = $("#select-drupal\\/gin");
-    select.value = "^6.0.0";
+    select.value = "^6.0";
     select.dispatchEvent(new Event("change"));
     expect($("#btn-apply").disabled).toBe(false);
 
@@ -475,6 +493,86 @@ describe("Packages tab dirty indicator", () => {
     select.value = "^5.0";
     select.dispatchEvent(new Event("change"));
     expect($("#btn-apply").disabled).toBe(true);
+  });
+});
+
+// =============================================================================
+// Revert and Set All to Latest
+// =============================================================================
+
+describe("Revert and Set all to latest", () => {
+  it("reverts all dropdowns to current version", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [
+        { name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" },
+        { name: "gin 5.0.3", version: "5.0.3", version_pin: "^5.0", core_compatibility: "^10" },
+      ],
+    });
+    mockBuildComposerCommands.mockReturnValue([]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Change to a different version
+    const select = $("#select-drupal\\/gin");
+    select.value = "^6.0";
+    select.dispatchEvent(new Event("change"));
+    expect($("#btn-apply").disabled).toBe(false);
+    expect($("#btn-revert").disabled).toBe(false);
+
+    // Click revert
+    $("#btn-revert").click();
+
+    expect(select.value).toBe("^5.0");
+    expect($("#btn-apply").disabled).toBe(true);
+    expect($("#btn-revert").disabled).toBe(true);
+  });
+
+  it("shows 'Set all to latest' button in Drupal Packages section header", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({
+      require: { "drupal/core-recommended": "^11", "drupal/gin": "^5.0" },
+    });
+
+    mockParseComposer.mockResolvedValue({
+      core_packages: [{ name: "drupal/core-recommended", module: "core-recommended", version: "^11" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [
+        { name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" },
+        { name: "gin 5.0.3", version: "5.0.3", version_pin: "^5.0", core_compatibility: "^10" },
+      ],
+    });
+    mockBuildComposerCommands.mockReturnValue([]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Should have a "Set all to latest" button
+    const btn = Array.from($$("#packages-body button")).find(
+      (b) => b.textContent === "Set all to latest",
+    );
+    expect(btn).toBeTruthy();
+
+    // Click it — the gin dropdown should switch to the latest (first non-current option)
+    btn.click();
+
+    const select = $("#select-drupal\\/gin");
+    expect(select.value).toBe("^6.0");
+    expect($("#btn-apply").disabled).toBe(false);
   });
 });
 
@@ -497,13 +595,13 @@ describe("Core packages", () => {
     });
     mockFetchReleases.mockResolvedValue({
       releases: [
-        { name: "drupal 11.1.0", version: "11.1.0" },
-        { name: "drupal 10.4.3", version: "10.4.3" },
+        { name: "drupal 11.1.0", version: "11.1.0", version_pin: "^11.1" },
+        { name: "drupal 10.4.3", version: "10.4.3", version_pin: "^10.4" },
       ],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/core-recommended:^11" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -539,11 +637,11 @@ describe("Core packages", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "drupal 11.1.0", version: "11.1.0" }],
+      releases: [{ name: "drupal 11.1.0", version: "11.1.0", version_pin: "^11.1" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/core-recommended:^11" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -555,7 +653,7 @@ describe("Core packages", () => {
     expect($("#btn-apply").disabled).toBe(true);
 
     const select = $("#select-core");
-    select.value = "^11.1.0";
+    select.value = "^11.1";
     select.dispatchEvent(new Event("change"));
 
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
@@ -574,7 +672,7 @@ describe("Core packages", () => {
     mockFetchReleases.mockResolvedValue({ releases: [] });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/core-recommended:^11" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -629,13 +727,13 @@ describe("loadComposer flow", () => {
     });
     mockFetchReleases.mockResolvedValue({
       releases: [
-        { name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" },
-        { name: "gin 5.1.0", version: "5.1.0", core_compatibility: "^10" },
+        { name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" },
+        { name: "gin 5.0.3", version: "5.0.3", version_pin: "^5.0", core_compatibility: "^10" },
       ],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     // Trigger load via edit toggle
@@ -658,11 +756,54 @@ describe("loadComposer flow", () => {
     expect(link.href).toContain("drupal.org/project/gin#project-releases");
     expect(link.target).toBe("_blank");
 
+    // Core requirement column should show the core_compatibility of the matching release
+    const cells = pkgRow.querySelectorAll("td");
+    expect(cells[2].textContent).toBe("^10");
+
     // Dropdown should have current + 2 release options
     const select = pkgRow.querySelector("select");
     expect(select).toBeTruthy();
     expect(select.options).toHaveLength(3);
     expect(select.options[0].textContent).toContain("(current)");
+  });
+
+  it("updates Drupal Core column when changing dropdown selection", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [
+        { name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" },
+        { name: "gin 5.0.3", version: "5.0.3", version_pin: "^5.0", core_compatibility: "^10" },
+      ],
+    });
+    mockBuildComposerCommands.mockReturnValue([]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    const pkgRow = Array.from($$("#packages-body tr")).find(r => r.querySelector("a"));
+    const cells = pkgRow.querySelectorAll("td");
+    const select = pkgRow.querySelector("select");
+
+    // Initially shows core compat for current version
+    expect(cells[2].textContent).toBe("^10");
+
+    // Change to ^6.0 — core cell should update
+    select.value = "^6.0";
+    select.dispatchEvent(new Event("change"));
+    expect(cells[2].textContent).toBe("^10 || ^11");
+
+    // Change back to current — core cell should revert
+    select.value = "^5.0";
+    select.dispatchEvent(new Event("change"));
+    expect(cells[2].textContent).toBe("^10");
   });
 
   it("parses and renders Composer packages", async () => {
@@ -674,11 +815,11 @@ describe("loadComposer flow", () => {
       composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1" }],
+      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1", version_pin: "^13.0" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drush/drush:^12" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -704,7 +845,7 @@ describe("loadComposer flow", () => {
     mockFetchReleases.mockResolvedValue({ releases: [] });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -779,7 +920,7 @@ describe("loadComposer flow", () => {
     mockFetchReleases.mockRejectedValue(new Error("network error"));
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     $("#btn-edit").click();
@@ -809,15 +950,15 @@ describe("Apply versions", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
+      releases: [{ name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
-    mockBuildVersionMap.mockReturnValue({ "drupal/gin": "^6.0.0" });
+    mockBuildVersionMap.mockReturnValue({ "drupal/gin": "^6.0" });
 
-    const updatedJSON = { require: { "drupal/gin": "^6.0.0" } };
+    const updatedJSON = { require: { "drupal/gin": "^6.0" } };
     mockUpdateComposer.mockResolvedValue({ composer_json: updatedJSON });
 
     // Load first
@@ -828,7 +969,7 @@ describe("Apply versions", () => {
 
     // Select a different version to enable Apply
     const select = $("#select-drupal\\/gin");
-    select.value = "^6.0.0";
+    select.value = "^6.0";
     select.dispatchEvent(new Event("change"));
     expect($("#btn-apply").disabled).toBe(false);
 
@@ -849,11 +990,11 @@ describe("Apply versions", () => {
       composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
-      releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
+      releases: [{ name: "gin 6.0.0", version: "6.0.0", version_pin: "^6.0", core_compatibility: "^10 || ^11" }],
     });
     mockBuildComposerCommands.mockReturnValue([
       'composer require "drupal/gin:^5.0" --no-update',
-      "composer update --dry-run",
+      "composer update",
     ]);
 
     // Load

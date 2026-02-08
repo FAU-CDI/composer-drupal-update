@@ -163,8 +163,12 @@ components:
           example: admin_toolbar 4.0.2
         version:
           type: string
-          description: Version number.
+          description: Raw release version number.
           example: "4.0.2"
+        version_pin:
+          type: string
+          description: Composer version constraint derived from the version (strips 8.x- prefix, drops patch level, prepends ^).
+          example: "^4.0"
         core_compatibility:
           type: string
           description: Drupal core version compatibility (only present for Drupal packages).

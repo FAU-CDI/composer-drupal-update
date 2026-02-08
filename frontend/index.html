@@ -46,7 +46,8 @@
     body { padding-bottom: 2.5rem; }
     a { color: #0366d6; }
     pre { background: #1e1e1e; color: #d4d4d4; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: 13px; margin: 0.5rem 0; }
-    select { max-width: 340px; }
+    select { width: 100%; min-width: 200px; max-width: 340px; box-sizing: border-box; }
+    .col-version, .col-core { font-family: monospace; font-size: 13px; white-space: nowrap; }
 
     /* Tabs */
     .tabs { display: flex; border-bottom: 2px solid #ccc; margin-bottom: 1rem; gap: 0; }
@@ -110,6 +111,7 @@
     <div class="actions">
       <button id="btn-edit">Edit</button>
       <button id="btn-download">Download</button>
+      <button id="btn-copy-json">Copy</button>
     </div>
     <div id="drop-zone" class="drop-zone">Drop or click to upload a composer.json</div>
     <input type="file" id="file-input" accept=".json" hidden>
@@ -119,17 +121,19 @@
   <div id="tab-packages" class="tab-panel">
     <div class="actions">
       <button id="btn-apply" disabled>Apply</button>
+      <button id="btn-revert" disabled>Revert</button>
     </div>
     <table id="packages-table">
       <thead>
         <tr>
           <th>Package</th>
           <th>Current Version</th>
+          <th>Drupal Core</th>
           <th>Available Versions</th>
         </tr>
       </thead>
       <tbody id="packages-body">
-        <tr><td colspan="3">No composer.json loaded yet.</td></tr>
+        <tr><td colspan="4">No composer.json loaded yet.</td></tr>
       </tbody>
     </table>
   </div>
@@ -137,9 +141,19 @@
   <!-- Tab 3: Commands -->
   <div id="tab-commands" class="tab-panel">
     <p id="commands-empty">Load a composer.json to see commands.</p>
-    <pre id="commands-output" hidden></pre>
-    <div class="commands-actions">
-      <button id="btn-copy" hidden>Copy</button>
+
+    <div id="commands-apply-section" hidden>
+      <h3>Apply</h3>
+      <p style="font-size:0.85rem;color:#666;margin:0.2rem 0 0.4rem;">One <code>composer require --no-update</code> per package, then a single <code>composer update</code>.</p>
+      <pre id="commands-apply-output"></pre>
+      <div class="commands-actions"><button id="btn-copy-apply">Copy</button></div>
+    </div>
+
+    <div id="commands-dryrun-section" hidden>
+      <h3>Dry Run</h3>
+      <p style="font-size:0.85rem;color:#666;margin:0.2rem 0 0.4rem;">Single command to simulate the upgrade without writing changes.</p>
+      <pre id="commands-dryrun-output"></pre>
+      <div class="commands-actions"><button id="btn-copy-dryrun">Copy</button></div>
     </div>
   </div>
 

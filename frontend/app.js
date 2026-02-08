@@ -1,4 +1,4 @@
-import { parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands } from "./api.js";
+import { parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands, buildDryRunCommand } from "./api.js";
 
 /** @typedef {import("./api.js").Release} Release */
 /** @typedef {import("./api.js").VersionSelection} VersionSelection */
@@ -43,9 +43,15 @@ const fileInput      = /** @type {HTMLInputElement} */ (document.getElementById(
 const btnEdit        = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
 const btnDownload    = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
 const btnApply       = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
-const commandsOutput = /** @type {HTMLPreElement} */ (document.getElementById("commands-output"));
-const commandsEmpty  = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
-const btnCopy        = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy"));
+const btnRevert      = /** @type {HTMLButtonElement} */ (document.getElementById("btn-revert"));
+const commandsEmpty       = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
+const commandsApplySection  = /** @type {HTMLDivElement} */ (document.getElementById("commands-apply-section"));
+const commandsApplyOutput   = /** @type {HTMLPreElement} */ (document.getElementById("commands-apply-output"));
+const btnCopyApply          = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-apply"));
+const commandsDryrunSection = /** @type {HTMLDivElement} */ (document.getElementById("commands-dryrun-section"));
+const commandsDryrunOutput  = /** @type {HTMLPreElement} */ (document.getElementById("commands-dryrun-output"));
+const btnCopyDryrun         = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-dryrun"));
+const btnCopyJson           = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-json"));
 const tabPackages    = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
 
 // =============================================================================
@@ -260,6 +266,45 @@ async function applyVersions() {
 }
 
 // =============================================================================
+// Revert & Set All to Latest
+// =============================================================================
+
+/** Reset all version dropdowns to their current (original) value. */
+function revertVersions() {
+  if (coreState) {
+    const coreSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-core"));
+    if (coreSelect) {
+      coreSelect.value = coreState.version;
+      coreSelect.dispatchEvent(new Event("change"));
+    }
+  }
+  for (const pkg of allPackages()) {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
+    if (select) {
+      select.value = pkg.version;
+      select.dispatchEvent(new Event("change"));
+    }
+  }
+  updatePackagesTabDirty();
+}
+
+/**
+ * Set all dropdowns in a package list to their latest (first non-current) option.
+ * @param {PackageState[]} packages
+ */
+function setAllToLatest(packages) {
+  for (const pkg of packages) {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
+    if (select && select.options.length > 1) {
+      // First option is "(current)", second is the latest release
+      select.value = select.options[1].value;
+      select.dispatchEvent(new Event("change"));
+    }
+  }
+  updatePackagesTabDirty();
+}
+
+// =============================================================================
 // Packages Tab Dirty Indicator
 // =============================================================================
 
@@ -288,6 +333,7 @@ function updatePackagesTabDirty() {
 
   tabPackages.textContent = dirty ? "Packages (*)" : "Packages";
   btnApply.disabled = !dirty;
+  btnRevert.disabled = !dirty;
 }
 
 // =============================================================================
@@ -297,13 +343,28 @@ function updatePackagesTabDirty() {
 /**
  * Render a section header row in the packages table.
  * @param {string} title
+ * @param {(() => void) | null} [onSetLatest] - If provided, adds a "Set all to latest" button.
  */
-function renderSectionHeader(title) {
+function renderSectionHeader(title, onSetLatest) {
   const row = document.createElement("tr");
   const cell = document.createElement("td");
-  cell.colSpan = 3;
-  cell.innerHTML = "<strong>" + title + "</strong>";
+  cell.colSpan = 4;
   cell.style.background = "#eee";
+
+  const strong = document.createElement("strong");
+  strong.textContent = title;
+  cell.appendChild(strong);
+
+  if (onSetLatest) {
+    const btn = document.createElement("button");
+    btn.textContent = "Set all to latest";
+    btn.style.marginLeft = "1rem";
+    btn.style.fontSize = "0.8rem";
+    btn.style.padding = "0.15rem 0.5rem";
+    btn.addEventListener("click", onSetLatest);
+    cell.appendChild(btn);
+  }
+
   row.appendChild(cell);
   packagesBody.appendChild(row);
 }
@@ -332,8 +393,14 @@ function renderCoreRow() {
 
   // Current version
   const versionCell = document.createElement("td");
+  versionCell.className = "col-version";
   versionCell.textContent = coreState.version;
   row.appendChild(versionCell);
+
+  // Drupal Core column (empty for the core row itself)
+  const emptyCore = document.createElement("td");
+  emptyCore.className = "col-core";
+  row.appendChild(emptyCore);
 
   // Dropdown for core releases
   const selectCell = document.createElement("td");
@@ -348,8 +415,14 @@ function renderCoreRow() {
 
     for (const release of coreState.releases) {
       const option = document.createElement("option");
-      option.value = "^" + release.version;
-      option.textContent = "^" + release.version;
+      option.value = release.version_pin;
+      let label = release.version_pin;
+      if (release.core_compatibility) {
+        label += "  (" + release.version + ", core: " + release.core_compatibility + ")";
+      } else if (release.version_pin !== "^" + release.version) {
+        label += "  (" + release.version + ")";
+      }
+      option.textContent = label;
       select.appendChild(option);
     }
 
@@ -387,8 +460,22 @@ function renderPackageRow(pkg, isDrupal) {
 
   // Current version
   const versionCell = document.createElement("td");
+  versionCell.className = "col-version";
   versionCell.textContent = pkg.version;
   row.appendChild(versionCell);
+
+  // Drupal Core column (Drupal packages only — shows core_compatibility)
+  const coreCell = document.createElement("td");
+  coreCell.className = "col-core";
+
+  /** Update the core cell to reflect the given version constraint. */
+  function updateCoreCell(/** @type {string} */ selectedValue) {
+    if (!isDrupal) return;
+    const match = pkg.releases.find((r) => r.version_pin === selectedValue);
+    coreCell.textContent = (match && match.core_compatibility) ? match.core_compatibility : "";
+  }
+  updateCoreCell(pkg.version);
+  row.appendChild(coreCell);
 
   // Dropdown for available versions
   const selectCell = document.createElement("td");
@@ -403,17 +490,22 @@ function renderPackageRow(pkg, isDrupal) {
 
     for (const release of pkg.releases) {
       const option = document.createElement("option");
-      option.value = "^" + release.version;
+      option.value = release.version_pin;
+      let label = release.version_pin;
       if (release.core_compatibility) {
-        option.textContent = "^" + release.version + "  (core: " + release.core_compatibility + ")";
-      } else {
-        option.textContent = "^" + release.version;
+        label += "  (" + release.version + ", core: " + release.core_compatibility + ")";
+      } else if (release.version_pin !== "^" + release.version) {
+        label += "  (" + release.version + ")";
       }
+      option.textContent = label;
       select.appendChild(option);
     }
 
-    // Update dirty indicator when user changes selection
-    select.addEventListener("change", () => updatePackagesTabDirty());
+    // Update dirty indicator and core cell when user changes selection
+    select.addEventListener("change", () => {
+      updateCoreCell(select.value);
+      updatePackagesTabDirty();
+    });
 
     selectCell.appendChild(select);
   } else {
@@ -434,7 +526,7 @@ function renderTable() {
   const hasComposer = composerPackages.length > 0;
 
   if (!hasCore && !hasDrupal && !hasComposer) {
-    packagesBody.innerHTML = '<tr><td colspan="3">No packages found.</td></tr>';
+    packagesBody.innerHTML = '<tr><td colspan="4">No packages found.</td></tr>';
     return;
   }
 
@@ -449,7 +541,7 @@ function renderTable() {
   }
 
   if (hasDrupal) {
-    if (showHeaders) renderSectionHeader("Drupal Packages");
+    if (showHeaders) renderSectionHeader("Drupal Packages", () => setAllToLatest(drupalPackages));
     for (const pkg of drupalPackages) {
       renderPackageRow(pkg, true);
     }
@@ -463,13 +555,13 @@ function renderTable() {
   }
 }
 
-/** Update the composer commands block from the current textarea content. */
+/** Update the composer commands blocks from the current textarea content. */
 function updateCommands() {
   const text = textarea.value.trim();
   if (!text) {
-    commandsOutput.hidden = true;
+    commandsApplySection.hidden = true;
+    commandsDryrunSection.hidden = true;
     commandsEmpty.hidden = false;
-    btnCopy.hidden = true;
     return;
   }
 
@@ -477,27 +569,31 @@ function updateCommands() {
   try {
     composerJSON = JSON.parse(text);
   } catch (e) {
-    commandsOutput.hidden = true;
+    commandsApplySection.hidden = true;
+    commandsDryrunSection.hidden = true;
     commandsEmpty.hidden = false;
-    btnCopy.hidden = true;
     return;
   }
 
   /** @type {Record<string, string>} */
   const require = composerJSON.require || {};
   const commands = buildComposerCommands(require);
+  const dryRun = buildDryRunCommand(require);
 
   if (commands.length === 0) {
-    commandsOutput.hidden = true;
+    commandsApplySection.hidden = true;
+    commandsDryrunSection.hidden = true;
     commandsEmpty.hidden = false;
-    btnCopy.hidden = true;
     return;
   }
 
-  commandsOutput.textContent = commands.join("\n");
-  commandsOutput.hidden = false;
+  commandsApplyOutput.textContent = commands.join("\n");
+  commandsApplySection.hidden = false;
+
+  commandsDryrunOutput.textContent = dryRun;
+  commandsDryrunSection.hidden = false;
+
   commandsEmpty.hidden = true;
-  btnCopy.hidden = false;
 }
 
 /**
@@ -511,20 +607,31 @@ function setStatus(msg, isError = false) {
 }
 
 // =============================================================================
-// Copy Commands
+// Copy Buttons
 // =============================================================================
 
-btnCopy.addEventListener("click", async () => {
-  const text = commandsOutput.textContent;
-  if (!text) return;
-  try {
-    await navigator.clipboard.writeText(text);
-    btnCopy.textContent = "Copied!";
-    setTimeout(() => { btnCopy.textContent = "Copy"; }, 1500);
-  } catch (e) {
-    setStatus("Failed to copy to clipboard.", true);
-  }
-});
+/**
+ * Wire a copy button to copy the text content of an element.
+ * @param {HTMLButtonElement} btn
+ * @param {() => string} getText
+ */
+function wireCopyButton(btn, getText) {
+  btn.addEventListener("click", async () => {
+    const text = getText();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = "Copied!";
+      setTimeout(() => { btn.textContent = "Copy"; }, 1500);
+    } catch (e) {
+      setStatus("Failed to copy to clipboard.", true);
+    }
+  });
+}
+
+wireCopyButton(btnCopyApply, () => commandsApplyOutput.textContent || "");
+wireCopyButton(btnCopyDryrun, () => commandsDryrunOutput.textContent || "");
+wireCopyButton(btnCopyJson, () => textarea.value);
 
 // =============================================================================
 // File Handling
@@ -579,6 +686,9 @@ btnDownload.addEventListener("click", () => {
 
 // Apply button
 btnApply.addEventListener("click", () => applyVersions());
+
+// Revert button — reset all dropdowns to their current version
+btnRevert.addEventListener("click", () => revertVersions());
 
 // Drag and drop (disabled while editing)
 dropZone.addEventListener("dragover", (e) => {

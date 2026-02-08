@@ -120,9 +120,9 @@ func selectVersion(reader *bufio.Reader, packageName, currentVersion string, rel
 	for i, r := range releases {
 		coreCompat := r.CoreCompatibility
 		if coreCompat != "" {
-			fmt.Printf("  [%d] %-20s (core: %s)\n", i+1, r.Version, coreCompat)
+			fmt.Printf("  [%d] %-12s (%s, core: %s)\n", i+1, r.VersionPin, r.Version, coreCompat)
 		} else {
-			fmt.Printf("  [%d] %s\n", i+1, r.Version)
+			fmt.Printf("  [%d] %-12s (%s)\n", i+1, r.VersionPin, r.Version)
 		}
 	}
 	fmt.Println("  [s] Skip (keep current version)")
@@ -141,7 +141,7 @@ func selectVersion(reader *bufio.Reader, packageName, currentVersion string, rel
 		var choice int
 		if _, err := fmt.Sscanf(input, "%d", &choice); err == nil {
 			if choice >= 1 && choice <= len(releases) {
-				newVersion := "^" + releases[choice-1].Version
+				newVersion := releases[choice-1].VersionPin
 				fmt.Printf("  -> Updated to %s\n", newVersion)
 				return newVersion
 			}
