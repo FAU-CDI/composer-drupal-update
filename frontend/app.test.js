@@ -11,6 +11,7 @@ const HTML = `
     <button class="tab active" data-tab="tab-json" data-text="composer.json">composer.json</button>
     <button class="tab" data-tab="tab-packages" data-text="Packages (*)">Packages</button>
     <button class="tab" data-tab="tab-commands" data-text="Commands">Commands</button>
+    <button class="tab" data-tab="tab-help" data-text="Help">Help</button>
   </div>
   <div id="tab-json" class="tab-panel active">
     <textarea id="composer-textarea" rows="20" readonly></textarea>
@@ -39,6 +40,7 @@ const HTML = `
       <button id="btn-copy" hidden>Copy</button>
     </div>
   </div>
+  <div id="tab-help" class="tab-panel"><p>Help content</p></div>
   <footer>
     <p id="status"></p>
   </footer>

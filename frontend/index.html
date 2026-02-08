@@ -82,6 +82,13 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
+    /* Help tab */
+    #tab-help h3 { margin: 1rem 0 0.4rem; }
+    #tab-help ol { padding-left: 1.4rem; line-height: 1.6; }
+    #tab-help dl { margin: 0.4rem 0; }
+    #tab-help dt { font-weight: bold; margin-top: 0.5rem; }
+    #tab-help dd { margin: 0.1rem 0 0 1rem; color: #444; }
+
     /* Commands copy area */
     .commands-actions { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
   </style>
@@ -94,6 +101,7 @@
     <button class="tab active" data-tab="tab-json" data-text="composer.json">composer.json</button>
     <button class="tab" data-tab="tab-packages" data-text="Packages (*)">Packages</button>
     <button class="tab" data-tab="tab-commands" data-text="Commands">Commands</button>
+    <button class="tab" data-tab="tab-help" data-text="Help">Help</button>
   </div>
 
   <!-- Tab 1: composer.json -->
@@ -133,6 +141,26 @@
     <div class="commands-actions">
       <button id="btn-copy" hidden>Copy</button>
     </div>
+  </div>
+
+  <!-- Tab 4: Help -->
+  <div id="tab-help" class="tab-panel">
+    <h3>Getting Started</h3>
+    <ol>
+      <li><strong>Load</strong> your <code>composer.json</code> by dropping it onto the drop zone, clicking it to browse, or pasting it into the textarea and clicking <em>Done Editing</em>.</li>
+      <li>Switch to the <strong>Packages</strong> tab. You'll see all your Drupal modules and Composer packages with their current versions. Use the dropdowns to pick new versions.</li>
+      <li>Click <strong>Apply</strong> to write the selected versions back into the JSON. The tab title shows <em>(*)</em> when you have unsaved changes.</li>
+      <li>Back on the <strong>composer.json</strong> tab, click <strong>Download</strong> to save the updated file.</li>
+    </ol>
+    <h3>Tabs</h3>
+    <dl>
+      <dt>composer.json</dt>
+      <dd>View, edit, upload, and download your <code>composer.json</code>. Click <em>Edit</em> to make manual changes; click <em>Done Editing</em> to re-parse.</dd>
+      <dt>Packages</dt>
+      <dd>Lists Drupal and Composer packages separately. Each row links to the project page. Pick a version from the dropdown and click <em>Apply</em>.</dd>
+      <dt>Commands</dt>
+      <dd>Shows ready-to-run <code>composer require "...version" --no-update</code> commands for every package in your <code>require</code> section, followed by a single <code>composer update --dry-run</code>. Copy them into your terminal to apply the same updates programmatically without replacing the file.</dd>
+    </dl>
   </div>
 
   <footer>

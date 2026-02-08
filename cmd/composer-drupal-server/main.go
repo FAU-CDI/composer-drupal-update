@@ -44,9 +44,5 @@ func main() {
 	mux.Handle("GET /", http.FileServer(http.FS(frontendFiles)))
 
 	fmt.Printf("Starting server on %s\n", *addr)
-	fmt.Printf("  App:     http://localhost%s/\n", *addr)
-	fmt.Printf("  API:     http://localhost%s/api/\n", *addr)
-	fmt.Printf("  Docs:    http://localhost%s/doc/\n", *addr)
-	fmt.Printf("  Spec:    http://localhost%s/openapi.yaml\n", *addr)
 	log.Fatal(http.ListenAndServe(*addr, mux))
 }
