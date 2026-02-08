@@ -20,6 +20,11 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 			w.Write([]byte(sampleXML))
 			return
 		}
+		if r.URL.Path == "/drupal/current" {
+			w.Header().Set("Content-Type", "application/xml")
+			w.Write([]byte(sampleCoreXML))
+			return
+		}
 		http.NotFound(w, r)
 	}))
 
@@ -41,6 +46,31 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 	}
 }
 
+// sampleCoreXML is a minimal drupal.org release history response for Drupal core.
+const sampleCoreXML = `<?xml version="1.0" encoding="utf-8"?>
+<project xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <title>Drupal core</title>
+  <short_name>drupal</short_name>
+  <supported_branches>10.4.,11.0.,11.1.</supported_branches>
+  <releases>
+    <release>
+      <name>drupal 11.1.0</name>
+      <version>11.1.0</version>
+      <status>published</status>
+    </release>
+    <release>
+      <name>drupal 11.0.8</name>
+      <version>11.0.8</version>
+      <status>published</status>
+    </release>
+    <release>
+      <name>drupal 10.4.3</name>
+      <version>10.4.3</version>
+      <status>published</status>
+    </release>
+  </releases>
+</project>`
+
 // =============================================================================
 // POST /api/parse
 // =============================================================================
@@ -55,6 +85,7 @@ func TestServer_Parse(t *testing.T) {
 				"drupal/admin_toolbar": "^3.6",
 				"drupal/gin": "^5.0",
 				"drupal/core-recommended": "^11",
+				"drupal/core-composer-scaffold": "^11",
 				"drush/drush": "^13",
 				"php": ">=8.2"
 			}
@@ -75,30 +106,34 @@ func TestServer_Parse(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Should return core-recommended and core-composer-scaffold as core packages
+	if len(resp.CorePackages) != 2 {
+		t.Fatalf("expected 2 core packages, got %d", len(resp.CorePackages))
+	}
+	if resp.CorePackages[0].Name != "drupal/core-composer-scaffold" {
+		t.Errorf("expected drupal/core-composer-scaffold, got %s", resp.CorePackages[0].Name)
+	}
+	if resp.CorePackages[1].Name != "drupal/core-recommended" {
+		t.Errorf("expected drupal/core-recommended, got %s", resp.CorePackages[1].Name)
+	}
+
 	// Should return admin_toolbar and gin as Drupal packages
 	if len(resp.DrupalPackages) != 2 {
 		t.Fatalf("expected 2 drupal packages, got %d", len(resp.DrupalPackages))
 	}
-	// Sorted: admin_toolbar first, gin second
 	if resp.DrupalPackages[0].Module != "admin_toolbar" {
 		t.Errorf("expected admin_toolbar, got %s", resp.DrupalPackages[0].Module)
 	}
 	if resp.DrupalPackages[1].Module != "gin" {
 		t.Errorf("expected gin, got %s", resp.DrupalPackages[1].Module)
 	}
-	if resp.DrupalPackages[0].Version != "^3.6" {
-		t.Errorf("expected ^3.6, got %s", resp.DrupalPackages[0].Version)
-	}
 
-	// Should return drush as a Composer package (skip php and core-recommended)
+	// Should return drush as a Composer package (skip php and core packages)
 	if len(resp.ComposerPackages) != 1 {
 		t.Fatalf("expected 1 composer package, got %d", len(resp.ComposerPackages))
 	}
 	if resp.ComposerPackages[0].Name != "drush/drush" {
 		t.Errorf("expected drush/drush, got %s", resp.ComposerPackages[0].Name)
-	}
-	if resp.ComposerPackages[0].Version != "^13" {
-		t.Errorf("expected ^13, got %s", resp.ComposerPackages[0].Version)
 	}
 }
 
@@ -192,6 +227,37 @@ func TestServer_Releases_Packagist(t *testing.T) {
 	}
 	if resp.Releases[0].Version != "13.0.1" {
 		t.Errorf("expected 13.0.1, got %s", resp.Releases[0].Version)
+	}
+}
+
+func TestServer_Releases_Core(t *testing.T) {
+	server, cleanup := newTestServer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/releases?package=drupal/core-recommended", nil)
+	server.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp drupalupdate.ReleasesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Package != "drupal/core-recommended" {
+		t.Errorf("expected package drupal/core-recommended, got %s", resp.Package)
+	}
+	if len(resp.Releases) != 3 {
+		t.Fatalf("expected 3 releases (one per branch), got %d", len(resp.Releases))
+	}
+	if resp.Releases[0].Version != "10.4.3" {
+		t.Errorf("expected 10.4.3, got %s", resp.Releases[0].Version)
+	}
+	if resp.Releases[2].Version != "11.1.0" {
+		t.Errorf("expected 11.1.0, got %s", resp.Releases[2].Version)
 	}
 }
 

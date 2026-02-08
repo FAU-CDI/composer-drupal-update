@@ -11,10 +11,19 @@ import { parseComposer, fetchReleases, updateComposer, buildVersionMap, buildCom
  * @property {Release[]} releases
  */
 
+/**
+ * @typedef {Object} CoreState
+ * @property {{name: string, version: string}[]} packages
+ * @property {string} version
+ * @property {Release[]} releases
+ */
+
 // =============================================================================
 // State
 // =============================================================================
 
+/** @type {CoreState | null} */
+let coreState = null;
 /** @type {PackageState[]} */
 let drupalPackages = [];
 /** @type {PackageState[]} */
@@ -69,6 +78,7 @@ function startEditing() {
   textarea.readOnly = false;
   btnEdit.textContent = "Done Editing";
   dropZone.classList.add("disabled");
+  coreState = null;
   drupalPackages = [];
   composerPackages = [];
   renderTable();
@@ -98,7 +108,7 @@ function toggleEdit() {
 // Core Logic
 // =============================================================================
 
-/** @returns {PackageState[]} All packages (both Drupal and Composer). */
+/** @returns {PackageState[]} All non-core packages (both Drupal and Composer). */
 function allPackages() {
   return [...drupalPackages, ...composerPackages];
 }
@@ -130,6 +140,18 @@ async function loadComposer() {
     return;
   }
 
+  // Core packages
+  const corePkgs = parsed.core_packages || [];
+  if (corePkgs.length > 0) {
+    coreState = {
+      packages: corePkgs.map(p => ({ name: p.name, version: p.version })),
+      version: corePkgs[0].version,
+      releases: [],
+    };
+  } else {
+    coreState = null;
+  }
+
   drupalPackages = (parsed.drupal_packages || []).map(pkg => ({
     name: pkg.name,
     module: pkg.module,
@@ -147,15 +169,35 @@ async function loadComposer() {
   setStatus("Fetching releases...");
   renderTable();
 
-  const all = allPackages();
-  await Promise.all(all.map(async (pkg) => {
-    try {
-      const data = await fetchReleases(pkg.name);
-      pkg.releases = data.releases || [];
-    } catch (e) {
-      pkg.releases = [];
-    }
-  }));
+  // Fetch releases for all packages in parallel
+  /** @type {Promise<void>[]} */
+  const fetches = [];
+
+  // Core releases (fetch once)
+  if (coreState) {
+    fetches.push((async () => {
+      try {
+        const data = await fetchReleases(coreState.packages[0].name);
+        coreState.releases = data.releases || [];
+      } catch (e) {
+        coreState.releases = [];
+      }
+    })());
+  }
+
+  // Regular packages
+  for (const pkg of allPackages()) {
+    fetches.push((async () => {
+      try {
+        const data = await fetchReleases(pkg.name);
+        pkg.releases = data.releases || [];
+      } catch (e) {
+        pkg.releases = [];
+      }
+    })());
+  }
+
+  await Promise.all(fetches);
 
   renderTable();
   setStatus("Ready. Select versions and click Apply.");
@@ -185,6 +227,19 @@ async function applyVersions() {
     };
   });
 
+  // Add core packages (all get the same selected version)
+  if (coreState) {
+    const coreSelect = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-core"));
+    const coreSelectedVersion = coreSelect ? coreSelect.value : coreState.version;
+    for (const pkg of coreState.packages) {
+      withSelections.push({
+        name: pkg.name,
+        version: pkg.version,
+        selectedVersion: coreSelectedVersion,
+      });
+    }
+  }
+
   const versions = buildVersionMap(withSelections);
 
   if (Object.keys(versions).length === 0) {
@@ -211,13 +266,26 @@ async function applyVersions() {
 /** Check if any version dropdown differs from the current version, update tab title. */
 function updatePackagesTabDirty() {
   let dirty = false;
-  for (const pkg of allPackages()) {
-    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
-    if (select && select.value !== pkg.version) {
+
+  // Check core dropdown
+  if (coreState) {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-core"));
+    if (select && select.value !== coreState.version) {
       dirty = true;
-      break;
     }
   }
+
+  // Check regular package dropdowns
+  if (!dirty) {
+    for (const pkg of allPackages()) {
+      const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
+      if (select && select.value !== pkg.version) {
+        dirty = true;
+        break;
+      }
+    }
+  }
+
   tabPackages.textContent = dirty ? "Packages (*)" : "Packages";
   btnApply.disabled = !dirty;
 }
@@ -237,6 +305,61 @@ function renderSectionHeader(title) {
   cell.innerHTML = "<strong>" + title + "</strong>";
   cell.style.background = "#eee";
   row.appendChild(cell);
+  packagesBody.appendChild(row);
+}
+
+/** Render the special Drupal Core row with a single dropdown for all core packages. */
+function renderCoreRow() {
+  if (!coreState) return;
+
+  const row = document.createElement("tr");
+
+  // Package name cell
+  const nameCell = document.createElement("td");
+  const link = document.createElement("a");
+  link.href = "https://www.drupal.org/project/drupal#project-releases";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = "Drupal Core";
+  nameCell.appendChild(link);
+
+  const packageList = document.createElement("div");
+  packageList.style.fontSize = "0.85em";
+  packageList.style.color = "#666";
+  packageList.textContent = coreState.packages.map(p => p.name).join(", ");
+  nameCell.appendChild(packageList);
+  row.appendChild(nameCell);
+
+  // Current version
+  const versionCell = document.createElement("td");
+  versionCell.textContent = coreState.version;
+  row.appendChild(versionCell);
+
+  // Dropdown for core releases
+  const selectCell = document.createElement("td");
+  if (coreState.releases.length > 0) {
+    const select = document.createElement("select");
+    select.id = "select-core";
+
+    const keepOption = document.createElement("option");
+    keepOption.value = coreState.version;
+    keepOption.textContent = coreState.version + " (current)";
+    select.appendChild(keepOption);
+
+    for (const release of coreState.releases) {
+      const option = document.createElement("option");
+      option.value = "^" + release.version;
+      option.textContent = "^" + release.version;
+      select.appendChild(option);
+    }
+
+    select.addEventListener("change", () => updatePackagesTabDirty());
+    selectCell.appendChild(select);
+  } else {
+    selectCell.textContent = "Loading...";
+  }
+  row.appendChild(selectCell);
+
   packagesBody.appendChild(row);
 }
 
@@ -306,25 +429,34 @@ function renderTable() {
   updateCommands();
   updatePackagesTabDirty();
 
+  const hasCore = coreState !== null && coreState.packages.length > 0;
   const hasDrupal = drupalPackages.length > 0;
   const hasComposer = composerPackages.length > 0;
 
-  if (!hasDrupal && !hasComposer) {
+  if (!hasCore && !hasDrupal && !hasComposer) {
     packagesBody.innerHTML = '<tr><td colspan="3">No packages found.</td></tr>';
     return;
   }
 
   packagesBody.innerHTML = "";
 
+  const typeCount = [hasCore, hasDrupal, hasComposer].filter(Boolean).length;
+  const showHeaders = typeCount > 1;
+
+  if (hasCore) {
+    if (showHeaders) renderSectionHeader("Drupal Core");
+    renderCoreRow();
+  }
+
   if (hasDrupal) {
-    if (hasComposer) renderSectionHeader("Drupal Packages");
+    if (showHeaders) renderSectionHeader("Drupal Packages");
     for (const pkg of drupalPackages) {
       renderPackageRow(pkg, true);
     }
   }
 
   if (hasComposer) {
-    if (hasDrupal) renderSectionHeader("Composer Packages");
+    if (showHeaders) renderSectionHeader("Composer Packages");
     for (const pkg of composerPackages) {
       renderPackageRow(pkg, false);
     }

@@ -1,7 +1,7 @@
 # composer-drupal-update
 
 > [!WARNING]
-> This project is entirely vibe coded. It is shared in the hope that it is useful, but comes with absolutely no warranty whatsoever. Use at your own risk.
+> This project is (almost) entirely vibe coded. It is shared in the hope that it is useful, but comes with absolutely no warranty whatsoever. Use at your own risk.
 
 A tool for interactively updating version constraints in `composer.json` files in a drupal context. It queries [drupal.org](https://www.drupal.org/) for Drupal module releases and [Packagist](https://packagist.org/) for all other packages, letting you pick new versions without invoking Composer itself.
 
@@ -31,6 +31,7 @@ Then open:
 | URL | Description |
 |---|---|
 | `http://localhost:8080/` | Frontend app |
+| `http://localhost:8080/api/` | API |
 | `http://localhost:8080/doc/` | Swagger UI |
 | `http://localhost:8080/openapi.yaml` | OpenAPI spec |
 

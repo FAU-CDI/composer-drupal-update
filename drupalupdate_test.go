@@ -344,6 +344,64 @@ func TestComposerPackages_Empty(t *testing.T) {
 }
 
 // =============================================================================
+// CorePackages
+// =============================================================================
+
+func TestCorePackages(t *testing.T) {
+	input := []byte(`{
+    "require": {
+        "drupal/core-recommended": "^11",
+        "drupal/core-composer-scaffold": "^11",
+        "drupal/core-project-message": "^11",
+        "drupal/admin_toolbar": "^3.6",
+        "drupal/gin": "^5.0",
+        "drush/drush": "^13",
+        "php": ">=8.2"
+    }
+}`)
+	c, err := drupalupdate.ParseComposerJSON(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pkgs := drupalupdate.CorePackages(c)
+	if len(pkgs) != 3 {
+		t.Fatalf("expected 3 core packages, got %d: %+v", len(pkgs), pkgs)
+	}
+	// Sorted alphabetically
+	if pkgs[0].Name != "drupal/core-composer-scaffold" {
+		t.Errorf("expected drupal/core-composer-scaffold first, got %s", pkgs[0].Name)
+	}
+	if pkgs[1].Name != "drupal/core-project-message" {
+		t.Errorf("expected drupal/core-project-message second, got %s", pkgs[1].Name)
+	}
+	if pkgs[2].Name != "drupal/core-recommended" {
+		t.Errorf("expected drupal/core-recommended third, got %s", pkgs[2].Name)
+	}
+	if pkgs[2].Version != "^11" {
+		t.Errorf("expected version ^11, got %s", pkgs[2].Version)
+	}
+}
+
+func TestCorePackages_Empty(t *testing.T) {
+	input := []byte(`{
+    "require": {
+        "drupal/gin": "^5.0",
+        "drush/drush": "^13"
+    }
+}`)
+	c, err := drupalupdate.ParseComposerJSON(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pkgs := drupalupdate.CorePackages(c)
+	if len(pkgs) != 0 {
+		t.Fatalf("expected 0 core packages, got %d", len(pkgs))
+	}
+}
+
+// =============================================================================
 // ParseSupportedBranches
 // =============================================================================
 
@@ -784,6 +842,51 @@ func TestFetchReleasesForPackage_RoutesDrupal(t *testing.T) {
 	}
 	if len(releases) != 1 || releases[0].Version != "5.0.3" {
 		t.Errorf("unexpected releases: %+v", releases)
+	}
+}
+
+func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
+	drupalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/drupal/current" {
+			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+				<project>
+					<supported_branches>10.4.,11.0.,11.1.</supported_branches>
+					<releases>
+						<release><name>drupal 11.1.0</name><version>11.1.0</version><status>published</status></release>
+						<release><name>drupal 11.0.8</name><version>11.0.8</version><status>published</status></release>
+						<release><name>drupal 10.4.3</name><version>10.4.3</version><status>published</status></release>
+					</releases>
+				</project>`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer drupalServer.Close()
+
+	packagistServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("Packagist should not be called for core packages")
+		http.NotFound(w, r)
+	}))
+	defer packagistServer.Close()
+
+	client := drupalupdate.NewClientWithHTTP(drupalServer.URL, packagistServer.URL, &http.Client{})
+
+	// Any core package name should route to drupal.org project "drupal"
+	releases, err := client.FetchReleasesForPackage("drupal/core-recommended")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(releases) != 3 {
+		t.Fatalf("expected 3 releases, got %d: %+v", len(releases), releases)
+	}
+	if releases[0].Version != "10.4.3" {
+		t.Errorf("expected 10.4.3, got %s", releases[0].Version)
+	}
+	if releases[1].Version != "11.0.8" {
+		t.Errorf("expected 11.0.8, got %s", releases[1].Version)
+	}
+	if releases[2].Version != "11.1.0" {
+		t.Errorf("expected 11.1.0, got %s", releases[2].Version)
 	}
 }
 

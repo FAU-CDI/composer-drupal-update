@@ -16,6 +16,7 @@ type ParseRequest struct {
 
 // ParseResponse is the response body for POST /api/parse.
 type ParseResponse struct {
+	CorePackages     []Package `json:"core_packages"`
 	DrupalPackages   []Package `json:"drupal_packages"`
 	ComposerPackages []Package `json:"composer_packages"`
 }
@@ -87,6 +88,7 @@ func (s *Server) handleParse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, ParseResponse{
+		CorePackages:     CorePackages(composer),
 		DrupalPackages:   DrupalPackages(composer),
 		ComposerPackages: ComposerPackages(composer),
 	})

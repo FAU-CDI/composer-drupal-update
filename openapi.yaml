@@ -13,8 +13,8 @@ paths:
       summary: Parse composer.json
       description: >
         Accepts a composer.json and returns all updatable packages, split into
-        Drupal packages (drupal/*) and Composer packages (everything else).
-        Core packages (drupal/core-*), PHP, and extensions are excluded.
+        Drupal core packages, Drupal modules (drupal/*), and Composer packages
+        (everything else). PHP and extensions are excluded.
       requestBody:
         required: true
         content:
@@ -40,8 +40,9 @@ paths:
       summary: Get releases for a package
       description: >
         Returns available releases for a composer package.
-        For drupal/* packages, queries the drupal.org release-history API and
-        returns the latest release per supported branch.
+        For drupal core packages (drupal/core-*), queries the "drupal" project
+        on drupal.org and returns the latest release per supported branch.
+        For other drupal/* packages, queries drupal.org by module name.
         For all other packages, queries the Packagist p2 API and returns the
         latest stable release per major version.
       parameters:
@@ -109,6 +110,11 @@ components:
     ParseResponse:
       type: object
       properties:
+        core_packages:
+          type: array
+          description: Drupal core packages (drupal/core-recommended, etc.). All share the same release versions.
+          items:
+            $ref: "#/components/schemas/Package"
         drupal_packages:
           type: array
           description: Drupal modules (drupal/*) available for updating.

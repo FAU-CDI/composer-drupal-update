@@ -24,6 +24,7 @@
 
 /**
  * @typedef {Object} ParseResponse
+ * @property {Package[]} core_packages
  * @property {Package[]} drupal_packages
  * @property {Package[]} composer_packages
  */

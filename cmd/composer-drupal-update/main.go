@@ -27,6 +27,35 @@ func main() {
 	reader := bufio.NewReader(os.Stdin)
 	changed := false
 
+	// Process Drupal Core
+	corePkgs := drupalupdate.CorePackages(composer)
+	if len(corePkgs) > 0 {
+		fmt.Println("\n=== Drupal Core ===")
+		fmt.Print("  Packages: ")
+		for i, pkg := range corePkgs {
+			if i > 0 {
+				fmt.Print(", ")
+			}
+			fmt.Print(pkg.Name)
+		}
+		fmt.Println()
+
+		releases, err := client.FetchReleases("drupal")
+		if err != nil {
+			fmt.Printf("  Could not fetch core releases: %v\n", err)
+		} else if len(releases) > 0 {
+			newVersion := selectVersion(reader, "Drupal Core", corePkgs[0].Version, releases)
+			if newVersion != "" && newVersion != corePkgs[0].Version {
+				for _, pkg := range corePkgs {
+					composer.Require[pkg.Name] = newVersion
+				}
+				changed = true
+			}
+		} else {
+			fmt.Println("  No releases found")
+		}
+	}
+
 	// Process Drupal packages
 	drupalPkgs := drupalupdate.DrupalPackages(composer)
 	if len(drupalPkgs) > 0 {

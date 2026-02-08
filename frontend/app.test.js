@@ -479,6 +479,142 @@ describe("Packages tab dirty indicator", () => {
 });
 
 // =============================================================================
+// Core Packages
+// =============================================================================
+
+describe("Core packages", () => {
+  it("renders a core row with package list and dropdown", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/core-recommended": "^11", "drupal/core-composer-scaffold": "^11" } });
+
+    mockParseComposer.mockResolvedValue({
+      core_packages: [
+        { name: "drupal/core-composer-scaffold", module: "core-composer-scaffold", version: "^11" },
+        { name: "drupal/core-recommended", module: "core-recommended", version: "^11" },
+      ],
+      drupal_packages: [],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [
+        { name: "drupal 11.1.0", version: "11.1.0" },
+        { name: "drupal 10.4.3", version: "10.4.3" },
+      ],
+    });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drupal/core-recommended:^11" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Should have a core link pointing to drupal.org
+    const link = $$("#packages-body a")[0];
+    expect(link).toBeTruthy();
+    expect(link.textContent).toBe("Drupal Core");
+    expect(link.href).toContain("drupal.org/project/drupal#project-releases");
+
+    // Should list the package names
+    const bodyHTML = $("#packages-body").innerHTML;
+    expect(bodyHTML).toContain("drupal/core-recommended");
+    expect(bodyHTML).toContain("drupal/core-composer-scaffold");
+
+    // Should have a select with id "select-core"
+    const select = $("#select-core");
+    expect(select).toBeTruthy();
+    expect(select.options).toHaveLength(3); // current + 2 releases
+    expect(select.options[0].textContent).toContain("(current)");
+  });
+
+  it("marks dirty when core version is changed", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/core-recommended": "^11" } });
+
+    mockParseComposer.mockResolvedValue({
+      core_packages: [{ name: "drupal/core-recommended", module: "core-recommended", version: "^11" }],
+      drupal_packages: [],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [{ name: "drupal 11.1.0", version: "11.1.0" }],
+    });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drupal/core-recommended:^11" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    expect($('[data-tab="tab-packages"]').textContent).toBe("Packages");
+    expect($("#btn-apply").disabled).toBe(true);
+
+    const select = $("#select-core");
+    select.value = "^11.1.0";
+    select.dispatchEvent(new Event("change"));
+
+    expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
+    expect($("#btn-apply").disabled).toBe(false);
+  });
+
+  it("shows section headers when core and other packages coexist", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/core-recommended": "^11", "drupal/gin": "^5.0" } });
+
+    mockParseComposer.mockResolvedValue({
+      core_packages: [{ name: "drupal/core-recommended", module: "core-recommended", version: "^11" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({ releases: [] });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drupal/core-recommended:^11" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    const bodyHTML = $("#packages-body").innerHTML;
+    expect(bodyHTML).toContain("Drupal Core");
+    expect(bodyHTML).toContain("Drupal Packages");
+  });
+
+  it("clears core state when entering edit mode", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/core-recommended": "^11" } });
+
+    mockParseComposer.mockResolvedValue({
+      core_packages: [{ name: "drupal/core-recommended", module: "core-recommended", version: "^11" }],
+      drupal_packages: [],
+      composer_packages: [],
+    });
+    mockFetchReleases.mockResolvedValue({ releases: [] });
+    mockBuildComposerCommands.mockReturnValue([]);
+
+    // Load first
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Enter edit mode again
+    $("#btn-edit").click();
+
+    // Core select should be gone
+    expect($("#select-core")).toBeNull();
+    expect($("#packages-body").textContent).toContain("No packages found");
+  });
+});
+
+// =============================================================================
 // Full Load Flow
 // =============================================================================
 

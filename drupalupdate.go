@@ -176,6 +176,23 @@ func DrupalPackages(c *ComposerJSON) []Package {
 	return pkgs
 }
 
+// CorePackages extracts all Drupal core packages from a ComposerJSON.
+// These are packages like drupal/core, drupal/core-recommended, etc.
+func CorePackages(c *ComposerJSON) []Package {
+	var pkgs []Package
+	for name, version := range c.Require {
+		module, ok := DrupalModuleName(name)
+		if !ok || !IsCorePackage(module) {
+			continue
+		}
+		pkgs = append(pkgs, Package{Name: name, Module: module, Version: version})
+	}
+	sort.Slice(pkgs, func(i, j int) bool {
+		return pkgs[i].Name < pkgs[j].Name
+	})
+	return pkgs
+}
+
 // ComposerPackages extracts all non-Drupal, non-skippable packages from a ComposerJSON.
 func ComposerPackages(c *ComposerJSON) []Package {
 	var pkgs []Package
@@ -232,10 +249,15 @@ func NewClientWithHTTP(drupalBaseURL, packagistBaseURL string, httpClient *http.
 }
 
 // FetchReleasesForPackage fetches releases for any composer package.
-// For drupal/* packages (excluding core), it queries drupal.org.
+// For drupal core packages (drupal/core, drupal/core-recommended, etc.),
+// it queries the "drupal" project on drupal.org.
+// For other drupal/* packages, it queries drupal.org by module name.
 // For all other packages, it queries Packagist.
 func (c *Client) FetchReleasesForPackage(packageName string) ([]Release, error) {
-	if moduleName, ok := DrupalModuleName(packageName); ok && !IsCorePackage(moduleName) {
+	if moduleName, ok := DrupalModuleName(packageName); ok {
+		if IsCorePackage(moduleName) {
+			return c.FetchReleases("drupal")
+		}
 		return c.FetchReleases(moduleName)
 	}
 	return c.FetchPackagistReleases(packageName)
