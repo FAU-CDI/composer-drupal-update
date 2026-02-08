@@ -1,0 +1,183 @@
+openapi: "3.0.3"
+info:
+  title: Composer Drupal Update API
+  description: API for parsing composer.json files, fetching Drupal module releases, and updating version constraints.
+  version: "1.0.0"
+
+servers:
+  - url: /
+
+paths:
+  /api/parse:
+    post:
+      summary: Parse composer.json
+      description: Accepts a composer.json and returns all updatable Drupal packages with their current version constraints.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParseRequest"
+      responses:
+        "200":
+          description: List of Drupal packages found in the composer.json.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParseResponse"
+        "400":
+          description: Invalid request body or composer.json.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/releases:
+    get:
+      summary: Get releases for a module
+      description: Returns the latest release for each supported branch of a Drupal module, including core compatibility.
+      parameters:
+        - name: module
+          in: query
+          required: true
+          description: Drupal module machine name (e.g. "admin_toolbar").
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Available releases for the module.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReleasesResponse"
+        "400":
+          description: Missing module parameter.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "502":
+          description: Failed to fetch releases from drupal.org.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/update:
+    post:
+      summary: Update composer.json versions
+      description: Accepts a composer.json and a map of package names to new version constraints. Returns the updated composer.json with all other fields preserved.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateRequest"
+      responses:
+        "200":
+          description: The updated composer.json.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateResponse"
+        "400":
+          description: Invalid request body or composer.json.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    ParseRequest:
+      type: object
+      required:
+        - composer_json
+      properties:
+        composer_json:
+          description: The full composer.json contents as a JSON object.
+          type: object
+
+    ParseResponse:
+      type: object
+      properties:
+        packages:
+          type: array
+          items:
+            $ref: "#/components/schemas/Package"
+
+    Package:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Composer package name.
+          example: drupal/gin
+        module:
+          type: string
+          description: Drupal module machine name.
+          example: gin
+        version:
+          type: string
+          description: Current version constraint.
+          example: "^5.0"
+
+    ReleasesResponse:
+      type: object
+      properties:
+        module:
+          type: string
+          description: The queried module name.
+          example: admin_toolbar
+        releases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Release"
+
+    Release:
+      type: object
+      properties:
+        name:
+          type: string
+          description: Human-readable release name.
+          example: admin_toolbar 4.0.2
+        version:
+          type: string
+          description: Version number.
+          example: "4.0.2"
+        core_compatibility:
+          type: string
+          description: Drupal core version compatibility.
+          example: "^10.3 || ^11"
+
+    UpdateRequest:
+      type: object
+      required:
+        - composer_json
+        - versions
+      properties:
+        composer_json:
+          description: The full composer.json contents as a JSON object.
+          type: object
+        versions:
+          type: object
+          description: Map of package names to new version constraints.
+          additionalProperties:
+            type: string
+          example:
+            drupal/gin: "^6.0"
+            drupal/admin_toolbar: "^4.0"
+
+    UpdateResponse:
+      type: object
+      properties:
+        composer_json:
+          description: The updated composer.json contents as a JSON object.
+          type: object
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message.

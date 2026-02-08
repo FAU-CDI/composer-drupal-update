@@ -35,10 +35,10 @@ type ReleaseHistory struct {
 
 // Release represents a single release from drupal.org.
 type Release struct {
-	Name              string `xml:"name"`
-	Version           string `xml:"version"`
-	Status            string `xml:"status"`
-	CoreCompatibility string `xml:"core_compatibility"`
+	Name              string `xml:"name" json:"name"`
+	Version           string `xml:"version" json:"version"`
+	Status            string `xml:"status" json:"-"`
+	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility"`
 }
 
 // =============================================================================
@@ -126,6 +126,30 @@ func DrupalModuleName(packageName string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimPrefix(packageName, "drupal/"), true
+}
+
+// Package represents a drupal module found in composer.json.
+type Package struct {
+	Name    string `json:"name"`    // composer package name, e.g. "drupal/gin"
+	Module  string `json:"module"`  // drupal module name, e.g. "gin"
+	Version string `json:"version"` // current version constraint, e.g. "^5.0"
+}
+
+// DrupalPackages extracts all updatable drupal modules from a ComposerJSON.
+// It skips non-drupal packages and core packages.
+func DrupalPackages(c *ComposerJSON) []Package {
+	var pkgs []Package
+	for name, version := range c.Require {
+		module, ok := DrupalModuleName(name)
+		if !ok || IsCorePackage(module) {
+			continue
+		}
+		pkgs = append(pkgs, Package{Name: name, Module: module, Version: version})
+	}
+	sort.Slice(pkgs, func(i, j int) bool {
+		return pkgs[i].Name < pkgs[j].Name
+	})
+	return pkgs
 }
 
 // =============================================================================
