@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { postJSON, getJSON, parseComposer, fetchReleases, updateComposer, buildVersionMap } from "./api.js";
+import { postJSON, getJSON, parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands } from "./api.js";
 
 // =============================================================================
 // Mock fetch
@@ -185,5 +185,38 @@ describe("buildVersionMap", () => {
 
   it("returns empty object for empty input", () => {
     expect(buildVersionMap([])).toEqual({});
+  });
+});
+
+// =============================================================================
+// buildComposerCommands
+// =============================================================================
+
+describe("buildComposerCommands", () => {
+  it("generates require commands followed by update --dry-run", () => {
+    const versions = {
+      "drupal/gin": "^6.0",
+      "drupal/admin_toolbar": "^4.0",
+    };
+
+    const commands = buildComposerCommands(versions);
+
+    expect(commands).toHaveLength(3);
+    expect(commands[0]).toBe('composer require "drupal/gin:^6.0" --no-update');
+    expect(commands[1]).toBe('composer require "drupal/admin_toolbar:^4.0" --no-update');
+    expect(commands[2]).toBe("composer update --dry-run");
+  });
+
+  it("returns a single require + update for one change", () => {
+    const commands = buildComposerCommands({ "drupal/book": "^3.0" });
+
+    expect(commands).toEqual([
+      'composer require "drupal/book:^3.0" --no-update',
+      "composer update --dry-run",
+    ]);
+  });
+
+  it("returns empty array when no versions given", () => {
+    expect(buildComposerCommands({})).toEqual([]);
   });
 });

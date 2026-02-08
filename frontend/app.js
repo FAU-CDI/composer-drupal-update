@@ -1,26 +1,61 @@
-import { parseComposer, fetchReleases, updateComposer, buildVersionMap } from "./api.js";
+import { parseComposer, fetchReleases, updateComposer, buildVersionMap, buildComposerCommands } from "./api.js";
+
+/** @typedef {import("./api.js").Release} Release */
+/** @typedef {import("./api.js").VersionSelection} VersionSelection */
+
+/**
+ * @typedef {Object} PackageState
+ * @property {string} name
+ * @property {string} module
+ * @property {string} version
+ * @property {Release[]} releases
+ */
 
 // =============================================================================
 // State
 // =============================================================================
 
-// The current composer.json text lives in the textarea.
-// Packages and their available releases are stored here after parsing.
-let packages = [];    // [{ name, module, version, releases }]
-let editing = false;  // Whether the textarea is currently editable
+/** @type {PackageState[]} */
+let packages = [];
+/** Whether the textarea is currently editable. */
+let editing = false;
 
 // =============================================================================
 // DOM Elements
 // =============================================================================
 
-const textarea      = document.getElementById("composer-textarea");
-const statusEl      = document.getElementById("status");
-const packagesBody  = document.getElementById("packages-body");
-const dropZone      = document.getElementById("drop-zone");
-const fileInput     = document.getElementById("file-input");
-const btnEdit       = document.getElementById("btn-edit");
-const btnDownload   = document.getElementById("btn-download");
-const btnApply      = document.getElementById("btn-apply");
+const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById("composer-textarea"));
+const statusEl = /** @type {HTMLParagraphElement} */ (document.getElementById("status"));
+const packagesBody = /** @type {HTMLTableSectionElement} */ (document.getElementById("packages-body"));
+const dropZone = /** @type {HTMLDivElement} */ (document.getElementById("drop-zone"));
+const fileInput = /** @type {HTMLInputElement} */ (document.getElementById("file-input"));
+const btnEdit = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
+const btnDownload = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
+const btnApply = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
+const commandsOutput = /** @type {HTMLPreElement} */ (document.getElementById("commands-output"));
+const commandsEmpty = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
+const btnCopy = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy"));
+const tabPackages = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
+
+// =============================================================================
+// Tabs
+// =============================================================================
+
+const tabs = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab"));
+const panels = /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".tab-panel"));
+
+/**
+ * Switch to the tab with the given panel id.
+ * @param {string | undefined} tabId
+ */
+function switchTab(tabId) {
+  tabs.forEach(t => t.classList.toggle("active", t.dataset.tab === tabId));
+  panels.forEach(p => p.classList.toggle("active", p.id === tabId));
+}
+
+tabs.forEach(tab => {
+  tab.addEventListener("click", () => switchTab(tab.dataset.tab));
+});
 
 // =============================================================================
 // Edit Toggle
@@ -68,6 +103,7 @@ async function loadComposer() {
     return;
   }
 
+  /** @type {Record<string, any>} */
   let composerJSON;
   try {
     composerJSON = JSON.parse(text);
@@ -78,21 +114,19 @@ async function loadComposer() {
 
   setStatus("Parsing composer.json...");
 
-  // Step 1: Parse to get drupal packages
   let parsed;
   try {
     parsed = await parseComposer(composerJSON);
   } catch (e) {
-    setStatus("Error parsing: " + e.message, true);
+    setStatus("Error parsing: " + /** @type {Error} */ (e).message, true);
     return;
   }
 
-  // Step 2: Fetch releases for each package
   packages = parsed.packages.map(pkg => ({
     name: pkg.name,
     module: pkg.module,
     version: pkg.version,
-    releases: [],
+    releases: /** @type {Release[]} */ ([]),
   }));
 
   setStatus("Fetching releases...");
@@ -108,7 +142,6 @@ async function loadComposer() {
   }));
 
   renderTable();
-  btnApply.disabled = false;
   setStatus("Ready. Select versions and click Apply.");
 }
 
@@ -117,6 +150,7 @@ async function applyVersions() {
   const text = textarea.value.trim();
   if (!text) return;
 
+  /** @type {Record<string, any>} */
   let composerJSON;
   try {
     composerJSON = JSON.parse(text);
@@ -125,9 +159,9 @@ async function applyVersions() {
     return;
   }
 
-  // Collect selected versions from dropdowns
+  /** @type {VersionSelection[]} */
   const withSelections = packages.map(pkg => {
-    const select = document.getElementById("select-" + pkg.module);
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.module));
     return {
       name: pkg.name,
       version: pkg.version,
@@ -146,21 +180,41 @@ async function applyVersions() {
 
   try {
     const data = await updateComposer(composerJSON, versions);
-    // Update textarea with the new composer.json (pretty-printed)
     textarea.value = JSON.stringify(data.composer_json, null, 4);
     setStatus("Updated " + Object.keys(versions).length + " package(s). Reloading table...");
     await loadComposer();
   } catch (e) {
-    setStatus("Error applying updates: " + e.message, true);
+    setStatus("Error applying updates: " + /** @type {Error} */ (e).message, true);
   }
+}
+
+// =============================================================================
+// Packages Tab Dirty Indicator
+// =============================================================================
+
+/** Check if any version dropdown differs from the current version, update tab title. */
+function updatePackagesTabDirty() {
+  let dirty = false;
+  for (const pkg of packages) {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.module));
+    if (select && select.value !== pkg.version) {
+      dirty = true;
+      break;
+    }
+  }
+  tabPackages.textContent = dirty ? "Packages (*)" : "Packages";
+  btnApply.disabled = !dirty;
 }
 
 // =============================================================================
 // Rendering
 // =============================================================================
 
-/** Render the packages table with dropdowns. */
+/** Render the packages table with dropdowns, and update the commands block. */
 function renderTable() {
+  updateCommands();
+  updatePackagesTabDirty();
+
   if (packages.length === 0) {
     packagesBody.innerHTML = '<tr><td colspan="3">No Drupal packages found.</td></tr>';
     return;
@@ -191,13 +245,11 @@ function renderTable() {
       const select = document.createElement("select");
       select.id = "select-" + pkg.module;
 
-      // "Keep current" option
       const keepOption = document.createElement("option");
       keepOption.value = pkg.version;
       keepOption.textContent = pkg.version + " (current)";
       select.appendChild(keepOption);
 
-      // One option per available release
       for (const release of pkg.releases) {
         const option = document.createElement("option");
         option.value = "^" + release.version;
@@ -205,6 +257,9 @@ function renderTable() {
         option.textContent = "^" + release.version + "  (core: " + core + ")";
         select.appendChild(option);
       }
+
+      // Update dirty indicator when user changes selection
+      select.addEventListener("change", () => updatePackagesTabDirty());
 
       selectCell.appendChild(select);
     } else {
@@ -216,18 +271,78 @@ function renderTable() {
   }
 }
 
+/** Update the composer commands block from the current textarea content. */
+function updateCommands() {
+  const text = textarea.value.trim();
+  if (!text) {
+    commandsOutput.hidden = true;
+    commandsEmpty.hidden = false;
+    btnCopy.hidden = true;
+    return;
+  }
+
+  let composerJSON;
+  try {
+    composerJSON = JSON.parse(text);
+  } catch (e) {
+    commandsOutput.hidden = true;
+    commandsEmpty.hidden = false;
+    btnCopy.hidden = true;
+    return;
+  }
+
+  /** @type {Record<string, string>} */
+  const require = composerJSON.require || {};
+  const commands = buildComposerCommands(require);
+
+  if (commands.length === 0) {
+    commandsOutput.hidden = true;
+    commandsEmpty.hidden = false;
+    btnCopy.hidden = true;
+    return;
+  }
+
+  commandsOutput.textContent = commands.join("\n");
+  commandsOutput.hidden = false;
+  commandsEmpty.hidden = true;
+  btnCopy.hidden = false;
+}
+
+/**
+ * Display a status message.
+ * @param {string} msg
+ * @param {boolean} [isError]
+ */
 function setStatus(msg, isError = false) {
   statusEl.textContent = msg;
   statusEl.classList.toggle("error", isError);
 }
 
 // =============================================================================
+// Copy Commands
+// =============================================================================
+
+btnCopy.addEventListener("click", async () => {
+  const text = commandsOutput.textContent;
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    btnCopy.textContent = "Copied!";
+    setTimeout(() => { btnCopy.textContent = "Copy"; }, 1500);
+  } catch (e) {
+    setStatus("Failed to copy to clipboard.", true);
+  }
+});
+
+// =============================================================================
 // File Handling
 // =============================================================================
 
-/** Read a File object into the textarea and trigger loading. */
+/**
+ * Read a File object into the textarea and trigger loading.
+ * @param {File} file
+ */
 function handleFile(file) {
-  // If we were editing, leave edit mode
   if (editing) {
     editing = false;
     textarea.readOnly = true;
@@ -235,8 +350,8 @@ function handleFile(file) {
   }
 
   const reader = new FileReader();
-  reader.onload = function (e) {
-    textarea.value = e.target.result;
+  reader.onload = function () {
+    textarea.value = /** @type {string} */ (reader.result);
     loadComposer();
   };
   reader.readAsText(file);
@@ -251,7 +366,7 @@ dropZone.addEventListener("click", () => {
   if (!editing) fileInput.click();
 });
 fileInput.addEventListener("change", () => {
-  if (fileInput.files.length > 0) handleFile(fileInput.files[0]);
+  if (fileInput.files && fileInput.files.length > 0) handleFile(fileInput.files[0]);
 });
 
 // Edit toggle button
@@ -284,5 +399,7 @@ dropZone.addEventListener("dragleave", () => {
 dropZone.addEventListener("drop", (e) => {
   e.preventDefault();
   dropZone.classList.remove("dragover");
-  if (!editing && e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+  if (!editing && e.dataTransfer && e.dataTransfer.files.length > 0) {
+    handleFile(e.dataTransfer.files[0]);
+  }
 });
