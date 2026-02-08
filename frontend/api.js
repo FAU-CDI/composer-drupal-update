@@ -149,7 +149,7 @@ export function buildComposerCommands(versions) {
     commands.push(`composer require "${pkg}:${version}" --no-update`);
   }
   if (commands.length > 0) {
-    commands.push("composer update");
+    commands.push("composer update --with-all-dependencies");
   }
   return commands;
 }
@@ -164,5 +164,5 @@ export function buildDryRunCommand(versions) {
   const args = Object.entries(versions)
     .map(([pkg, version]) => `"${pkg}:${version}"`)
     .join(" ");
-  return args ? `composer require ${args} --dry-run` : "";
+  return args ? `composer require ${args} --dry-run --with-all-dependencies` : "";
 }

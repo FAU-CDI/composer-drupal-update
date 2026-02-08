@@ -17,16 +17,19 @@ A tool for interactively updating version constraints in `composer.json` files i
 
 ## Running
 
+### Web UI (recommended)
+
+```
+go run ./cmd/composer-drupal-server -addr :8080
+```
+
+Then open http://localhost:8080 in your browser.
+
+
 ### CLI
 
 ```
 go run ./cmd/composer-drupal-update path/to/composer.json
-```
-
-### Web server
-
-```
-go run ./cmd/composer-drupal-server -addr :8080
 ```
 
 Then open:
