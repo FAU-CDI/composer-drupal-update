@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build CLI
+        run: go build -o /dev/null ./cmd/composer-drupal-update
+
+      - name: Build server
+        run: go build -o /dev/null ./cmd/composer-drupal-server
+
+      - name: Run Go tests
+        run: go test -v ./...
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Enable Corepack (Yarn)
+        run: corepack enable
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: yarn install --immutable
+
+      - name: Frontend tests
+        working-directory: frontend
+        run: yarn test
+
+      - name: Frontend typecheck
+        working-directory: frontend
+        run: yarn typecheck

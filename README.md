@@ -1,5 +1,7 @@
 # composer-drupal-update
 
+[![CI](https://github.com/FAU-CDI/composer-drupal-update/actions/workflows/ci.yml/badge.svg)](https://github.com/FAU-CDI/composer-drupal-update/actions/workflows/ci.yml)
+
 > [!WARNING]
 > This project is (almost) entirely vibe coded. It is shared in the hope that it is useful, but comes with absolutely no warranty whatsoever. Use at your own risk.
 
