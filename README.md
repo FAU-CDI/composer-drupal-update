@@ -1,6 +1,7 @@
 # composer-drupal-update
 
 [![CI](https://github.com/FAU-CDI/composer-drupal-update/actions/workflows/ci.yml/badge.svg)](https://github.com/FAU-CDI/composer-drupal-update/actions/workflows/ci.yml)
+[![WTFPL](https://img.shields.io/badge/license-WTFPL-blue.svg)](http://www.wtfpl.net/)
 
 > [!WARNING]
 > This project is (almost) entirely vibe coded. It is shared in the hope that it is useful, but comes with absolutely no warranty whatsoever. Use at your own risk.
@@ -44,3 +45,7 @@ go test ./...
 cd frontend && yarn test
 cd frontend && yarn typecheck
 ```
+
+## License
+
+[WTFPL](http://www.wtfpl.net/) — Do What The Fuck You Want To Public License. See [LICENSE](LICENSE).
