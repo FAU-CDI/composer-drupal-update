@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -42,7 +43,7 @@ type Release struct {
 	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility,omitempty"`
 }
 
-// VersionPin converts a raw version string into a composer version constraint.
+// versionPin converts a raw version string into a composer version constraint.
 // It strips the "8.x-" prefix if present, strips stability suffixes (-rc*, -beta*,
 // -alpha*), keeps only major.minor (dropping the patch version), prepends "^",
 // and appends the appropriate composer stability flag (@RC, @beta, @alpha) if needed.
@@ -55,11 +56,9 @@ type Release struct {
 //	"3.0.0-rc21"     → "^3.0@RC"
 //	"2.0.0-beta3"    → "^2.0@beta"
 //	"1.0.0-alpha1"   → "^1.0@alpha"
-func VersionPin(version string) string {
+func versionPin(version string) string {
 	v := version
-	if strings.HasPrefix(v, "8.x-") {
-		v = strings.TrimPrefix(v, "8.x-")
-	}
+	v = strings.TrimPrefix(v, "8.x-")
 
 	// Detect and strip stability suffix
 	stability := ""
@@ -332,12 +331,12 @@ func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
 		return nil, err
 	}
 
-	branches := ParseSupportedBranches(history.SupportedBranches)
-	result := LatestPerBranch(history.Releases, branches)
+	branches := parseSupportedBranches(history.SupportedBranches)
+	result := latestPerBranch(history.Releases, branches)
 	for i := range result {
-		result[i].VersionPin = VersionPin(result[i].Version)
+		result[i].VersionPin = versionPin(result[i].Version)
 	}
-	SortReleasesDescending(result)
+	sortReleases(result)
 	return result, nil
 }
 
@@ -372,7 +371,7 @@ func (c *Client) FetchPackagistReleases(packageName string) ([]Release, error) {
 
 	versions := result.Packages[packageName]
 	releases := LatestStablePerMajor(packageName, versions)
-	SortReleasesDescending(releases)
+	sortReleases(releases)
 	return releases, nil
 }
 
@@ -420,7 +419,7 @@ func LatestStablePerMajor(packageName string, versions []PackagistVersion) []Rel
 		result = append(result, Release{
 			Name:       packageName + " " + version,
 			Version:    version,
-			VersionPin: VersionPin(version),
+			VersionPin: versionPin(version),
 		})
 	}
 	return result
@@ -430,9 +429,9 @@ func LatestStablePerMajor(packageName string, versions []PackagistVersion) []Rel
 // Drupal Branch Filtering
 // =============================================================================
 
-// ParseSupportedBranches splits a comma-separated branches string.
+// parseSupportedBranches splits a comma-separated branches string.
 // Example: "3.0.,4.0.,5.0." -> ["3.0.", "4.0.", "5.0."]
-func ParseSupportedBranches(branches string) []string {
+func parseSupportedBranches(branches string) []string {
 	if branches == "" {
 		return nil
 	}
@@ -447,11 +446,11 @@ func ParseSupportedBranches(branches string) []string {
 	return result
 }
 
-// SortReleasesDescending sorts releases by version in descending order (newest first).
+// sortReleases sorts releases by version in descending order (newest first).
 // It compares version segments numerically where possible, falling back to string comparison.
-func SortReleasesDescending(releases []Release) {
-	sort.Slice(releases, func(i, j int) bool {
-		return compareVersionStrings(releases[i].Version, releases[j].Version) > 0
+func sortReleases(releases []Release) {
+	slices.SortFunc(releases, func(a, b Release) int {
+		return compareVersionStrings(b.Version, a.Version)
 	})
 }
 
@@ -512,17 +511,14 @@ func parseLeadingInt(s string) (int, bool) {
 	return n, found
 }
 
-// LatestPerBranch returns the first (latest) published release for each supported branch.
+// latestPerBranch returns the first (latest) published release for each supported branch.
 // If no branches are given, it returns up to 10 published releases.
-func LatestPerBranch(releases []Release, supportedBranches []string) []Release {
+func latestPerBranch(releases []Release, supportedBranches []string) []Release {
 	if len(supportedBranches) == 0 {
 		var result []Release
 		for _, r := range releases {
 			if r.Status == "published" {
 				result = append(result, r)
-				if len(result) >= 10 {
-					break
-				}
 			}
 		}
 		return result
