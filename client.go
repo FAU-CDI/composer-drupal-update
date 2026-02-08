@@ -43,44 +43,6 @@ type Release struct {
 	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility,omitempty"`
 }
 
-// versionPin converts a raw version string into a composer version constraint.
-// It strips the "8.x-" prefix if present, strips stability suffixes (-rc*, -beta*,
-// -alpha*), keeps only major.minor (dropping the patch version), prepends "^",
-// and appends the appropriate composer stability flag (@RC, @beta, @alpha) if needed.
-//
-//	"5.0.3"          → "^5.0"
-//	"8.x-3.16"       → "^3.16"
-//	"11.1.0"         → "^11.1"
-//	"3.16"           → "^3.16"
-//	"8.x-1.0-rc17"   → "^1.0@RC"
-//	"3.0.0-rc21"     → "^3.0@RC"
-//	"2.0.0-beta3"    → "^2.0@beta"
-//	"1.0.0-alpha1"   → "^1.0@alpha"
-func versionPin(version string) string {
-	v := version
-	v = strings.TrimPrefix(v, "8.x-")
-
-	// Detect and strip stability suffix
-	stability := ""
-	lower := strings.ToLower(v)
-	if idx := strings.Index(lower, "-rc"); idx != -1 {
-		v = v[:idx]
-		stability = "@RC"
-	} else if idx := strings.Index(lower, "-beta"); idx != -1 {
-		v = v[:idx]
-		stability = "@beta"
-	} else if idx := strings.Index(lower, "-alpha"); idx != -1 {
-		v = v[:idx]
-		stability = "@alpha"
-	}
-
-	parts := strings.SplitN(v, ".", 3)
-	if len(parts) >= 2 {
-		return "^" + parts[0] + "." + parts[1] + stability
-	}
-	return "^" + v + stability
-}
-
 // PackagistResponse represents the response from the Packagist p2 API.
 type PackagistResponse struct {
 	Packages map[string][]PackagistVersion `json:"packages"`
@@ -334,7 +296,7 @@ func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
 	branches := parseSupportedBranches(history.SupportedBranches)
 	result := latestPerBranch(history.Releases, branches)
 	for i := range result {
-		result[i].VersionPin = versionPin(result[i].Version)
+		result[i].VersionPin = ParseVersion(result[i].Version).VersionPin()
 	}
 	sortReleases(result)
 	return result, nil
@@ -419,7 +381,7 @@ func LatestStablePerMajor(packageName string, versions []PackagistVersion) []Rel
 		result = append(result, Release{
 			Name:       packageName + " " + version,
 			Version:    version,
-			VersionPin: versionPin(version),
+			VersionPin: ParseVersion(version).VersionPin(),
 		})
 	}
 	return result
@@ -447,68 +409,10 @@ func parseSupportedBranches(branches string) []string {
 }
 
 // sortReleases sorts releases by version in descending order (newest first).
-// It compares version segments numerically where possible, falling back to string comparison.
 func sortReleases(releases []Release) {
 	slices.SortFunc(releases, func(a, b Release) int {
-		return compareVersionStrings(b.Version, a.Version)
+		return ParseVersion(b.Version).Compare(ParseVersion(a.Version))
 	})
-}
-
-// compareVersionStrings compares two version strings segment by segment.
-// Returns >0 if a > b, <0 if a < b, 0 if equal.
-func compareVersionStrings(a, b string) int {
-	// Strip 8.x- prefix for comparison
-	a = strings.TrimPrefix(a, "8.x-")
-	b = strings.TrimPrefix(b, "8.x-")
-
-	partsA := strings.Split(a, ".")
-	partsB := strings.Split(b, ".")
-
-	maxLen := len(partsA)
-	if len(partsB) > maxLen {
-		maxLen = len(partsB)
-	}
-
-	for k := 0; k < maxLen; k++ {
-		var sa, sb string
-		if k < len(partsA) {
-			sa = partsA[k]
-		}
-		if k < len(partsB) {
-			sb = partsB[k]
-		}
-
-		na, okA := parseLeadingInt(sa)
-		nb, okB := parseLeadingInt(sb)
-		if okA && okB {
-			if na != nb {
-				return na - nb
-			}
-			continue
-		}
-		if sa != sb {
-			if sa < sb {
-				return -1
-			}
-			return 1
-		}
-	}
-	return 0
-}
-
-// parseLeadingInt parses the leading integer from a string like "3" or "3-rc1".
-func parseLeadingInt(s string) (int, bool) {
-	n := 0
-	found := false
-	for _, ch := range s {
-		if ch >= '0' && ch <= '9' {
-			n = n*10 + int(ch-'0')
-			found = true
-		} else {
-			break
-		}
-	}
-	return n, found
 }
 
 // latestPerBranch returns the first (latest) published release for each supported branch.

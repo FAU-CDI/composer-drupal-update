@@ -29,46 +29,8 @@ func TestParseSupportedBranches(t *testing.T) {
 }
 
 // =============================================================================
-// VersionPin
+// sortReleases (uses Version.Compare; Version tests in version_test.go)
 // =============================================================================
-
-func TestVersionPin(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"5.0.3", "^5.0"},
-		{"4.0.2", "^4.0"},
-		{"3.0.5", "^3.0"},
-		{"11.1.0", "^11.1"},
-		{"10.4.3", "^10.4"},
-		{"13.0.1", "^13.0"},
-		{"2.1.0", "^2.1"},
-		{"3.16", "^3.16"},
-		{"8.x-3.16", "^3.16"},
-		{"8.x-1.5", "^1.5"},
-		{"8.x-2.0", "^2.0"},
-		{"1.0.0", "^1.0"},
-		{"0.5.0", "^0.5"},
-		// RC versions
-		{"8.x-1.0-rc17", "^1.0@RC"},
-		{"3.0.0-rc21", "^3.0@RC"},
-		{"2.1.0-RC3", "^2.1@RC"},
-		// Beta versions
-		{"2.0.0-beta3", "^2.0@beta"},
-		{"8.x-4.0-beta1", "^4.0@beta"},
-		// Alpha versions
-		{"1.0.0-alpha1", "^1.0@alpha"},
-		{"8.x-2.0-alpha5", "^2.0@alpha"},
-		// Edge case: single part
-		{"42", "^42"},
-	}
-	for _, tt := range tests {
-		if got := versionPin(tt.input); got != tt.want {
-			t.Errorf("VersionPin(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
 
 func TestSortReleasesDescending(t *testing.T) {
 	releases := []Release{
