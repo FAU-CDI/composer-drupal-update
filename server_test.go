@@ -17,12 +17,16 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 	drupalMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/admin_toolbar/current" {
 			w.Header().Set("Content-Type", "application/xml")
-			w.Write([]byte(sampleXML))
+			if _, err := w.Write([]byte(sampleXML)); err != nil {
+				return
+			}
 			return
 		}
 		if r.URL.Path == "/drupal/current" {
 			w.Header().Set("Content-Type", "application/xml")
-			w.Write([]byte(sampleCoreXML))
+			if _, err := w.Write([]byte(sampleCoreXML)); err != nil {
+				return
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -31,7 +35,9 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 	packagistMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/p2/drush/drush.json" {
 			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(samplePackagistJSON))
+			if _, err := w.Write([]byte(samplePackagistJSON)); err != nil {
+				return
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -76,6 +82,7 @@ const sampleCoreXML = `<?xml version="1.0" encoding="utf-8"?>
 // =============================================================================
 
 func TestServer_Parse(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
@@ -93,7 +100,7 @@ func TestServer_Parse(t *testing.T) {
 	}`
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/parse", bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
 	server.ServeHTTP(w, r)
 
@@ -138,11 +145,12 @@ func TestServer_Parse(t *testing.T) {
 }
 
 func TestServer_Parse_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/parse", bytes.NewBufferString("not json"))
+	r := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBufferString("not json"))
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -151,12 +159,13 @@ func TestServer_Parse_InvalidJSON(t *testing.T) {
 }
 
 func TestServer_Parse_InvalidComposerJSON(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	body := `{"composer_json": "this is a string, not an object"}`
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/parse", bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/parse", bytes.NewBufferString(body))
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -169,11 +178,12 @@ func TestServer_Parse_InvalidComposerJSON(t *testing.T) {
 // =============================================================================
 
 func TestServer_Releases_Drupal(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?package=drupal/admin_toolbar", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/releases?package=drupal/admin_toolbar", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
@@ -210,11 +220,12 @@ func TestServer_Releases_Drupal(t *testing.T) {
 }
 
 func TestServer_Releases_Packagist(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?package=drush/drush", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/releases?package=drush/drush", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
@@ -241,11 +252,12 @@ func TestServer_Releases_Packagist(t *testing.T) {
 }
 
 func TestServer_Releases_Core(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?package=drupal/core-recommended", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/releases?package=drupal/core-recommended", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
@@ -279,11 +291,12 @@ func TestServer_Releases_Core(t *testing.T) {
 }
 
 func TestServer_Releases_MissingPackage(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/releases", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -292,11 +305,12 @@ func TestServer_Releases_MissingPackage(t *testing.T) {
 }
 
 func TestServer_Releases_NotFound(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?package=drupal/nonexistent", nil)
+	r := httptest.NewRequest(http.MethodGet, "/api/releases?package=drupal/nonexistent", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadGateway {
@@ -309,6 +323,7 @@ func TestServer_Releases_NotFound(t *testing.T) {
 // =============================================================================
 
 func TestServer_Update(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
@@ -329,7 +344,7 @@ func TestServer_Update(t *testing.T) {
 	}`
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/update", bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/update", bytes.NewBufferString(body))
 	r.Header.Set("Content-Type", "application/json")
 	server.ServeHTTP(w, r)
 
@@ -373,11 +388,12 @@ func TestServer_Update(t *testing.T) {
 }
 
 func TestServer_Update_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/update", bytes.NewBufferString("broken"))
+	r := httptest.NewRequest(http.MethodPost, "/api/update", bytes.NewBufferString("broken"))
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadRequest {
@@ -386,6 +402,7 @@ func TestServer_Update_InvalidJSON(t *testing.T) {
 }
 
 func TestServer_Update_IgnoresUnknownPackages(t *testing.T) {
+	t.Parallel()
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
@@ -401,7 +418,7 @@ func TestServer_Update_IgnoresUnknownPackages(t *testing.T) {
 	}`
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("POST", "/api/update", bytes.NewBufferString(body))
+	r := httptest.NewRequest(http.MethodPost, "/api/update", bytes.NewBufferString(body))
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {

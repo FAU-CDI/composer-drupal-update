@@ -1,10 +1,13 @@
-package drupalupdate
+package drupalupdate_test
 
 import (
 	"testing"
+
+	drupalupdate "github.com/FAU-CDI/composer-drupal-update"
 )
 
 func TestParseVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input         string
 		wantPrefix    string
@@ -23,26 +26,30 @@ func TestParseVersion(t *testing.T) {
 		{"42", "", 42, -1, -1, ""},
 	}
 	for _, tt := range tests {
-		v := ParseVersion(tt.input)
-		if v.Prefix != tt.wantPrefix {
-			t.Errorf("ParseVersion(%q).Prefix = %q, want %q", tt.input, v.Prefix, tt.wantPrefix)
-		}
-		if v.Major != tt.wantMajor {
-			t.Errorf("ParseVersion(%q).Major = %d, want %d", tt.input, v.Major, tt.wantMajor)
-		}
-		if v.Minor != tt.wantMinor {
-			t.Errorf("ParseVersion(%q).Minor = %d, want %d", tt.input, v.Minor, tt.wantMinor)
-		}
-		if v.Patch != tt.wantPatch {
-			t.Errorf("ParseVersion(%q).Patch = %d, want %d", tt.input, v.Patch, tt.wantPatch)
-		}
-		if v.Stability != tt.wantStability {
-			t.Errorf("ParseVersion(%q).Stability = %q, want %q", tt.input, v.Stability, tt.wantStability)
-		}
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			v := drupalupdate.ParseVersion(tt.input)
+			if v.Prefix != tt.wantPrefix {
+				t.Errorf("ParseVersion(%q).Prefix = %q, want %q", tt.input, v.Prefix, tt.wantPrefix)
+			}
+			if v.Major != tt.wantMajor {
+				t.Errorf("ParseVersion(%q).Major = %d, want %d", tt.input, v.Major, tt.wantMajor)
+			}
+			if v.Minor != tt.wantMinor {
+				t.Errorf("ParseVersion(%q).Minor = %d, want %d", tt.input, v.Minor, tt.wantMinor)
+			}
+			if v.Patch != tt.wantPatch {
+				t.Errorf("ParseVersion(%q).Patch = %d, want %d", tt.input, v.Patch, tt.wantPatch)
+			}
+			if v.Stability != tt.wantStability {
+				t.Errorf("ParseVersion(%q).Stability = %q, want %q", tt.input, v.Stability, tt.wantStability)
+			}
+		})
 	}
 }
 
 func TestVersion_VersionPin(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  string
@@ -70,14 +77,18 @@ func TestVersion_VersionPin(t *testing.T) {
 		{"42", "^42"},
 	}
 	for _, tt := range tests {
-		v := ParseVersion(tt.input)
-		if got := v.VersionPin(); got != tt.want {
-			t.Errorf("ParseVersion(%q).VersionPin() = %q, want %q", tt.input, got, tt.want)
-		}
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			v := drupalupdate.ParseVersion(tt.input)
+			if got := v.VersionPin(); got != tt.want {
+				t.Errorf("ParseVersion(%q).VersionPin() = %q, want %q", tt.input, got, tt.want)
+			}
+		})
 	}
 }
 
 func TestVersion_Compare(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		a    string
 		b    string
@@ -94,12 +105,15 @@ func TestVersion_Compare(t *testing.T) {
 		{"42", "11.1.0", 1},
 	}
 	for _, tt := range tests {
-		va := ParseVersion(tt.a)
-		vb := ParseVersion(tt.b)
-		got := va.Compare(vb)
-		// Compare returns >0, <0, or 0; we only check the sign
-		if (got > 0) != (tt.want > 0) || (got < 0) != (tt.want < 0) || (got == 0) != (tt.want == 0) {
-			t.Errorf("Compare(%q, %q) = %d, want sign %d", tt.a, tt.b, got, tt.want)
-		}
+		t.Run(tt.a+"_"+tt.b, func(t *testing.T) {
+			t.Parallel()
+			va := drupalupdate.ParseVersion(tt.a)
+			vb := drupalupdate.ParseVersion(tt.b)
+			got := va.Compare(vb)
+			// Compare returns >0, <0, or 0; we only check the sign
+			if (got > 0) != (tt.want > 0) || (got < 0) != (tt.want < 0) || (got == 0) != (tt.want == 0) {
+				t.Errorf("Compare(%q, %q) = %d, want sign %d", tt.a, tt.b, got, tt.want)
+			}
+		})
 	}
 }

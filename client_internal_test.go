@@ -10,6 +10,7 @@ import (
 // =============================================================================
 
 func TestParseSupportedBranches(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  []string
@@ -33,6 +34,7 @@ func TestParseSupportedBranches(t *testing.T) {
 // =============================================================================
 
 func TestSortReleasesDescending(t *testing.T) {
+	t.Parallel()
 	releases := []Release{
 		{Version: "3.0.5"},
 		{Version: "11.1.0"},
@@ -55,6 +57,7 @@ func TestSortReleasesDescending(t *testing.T) {
 // =============================================================================
 
 func TestLatestPerBranch_WithBranches(t *testing.T) {
+	t.Parallel()
 	releases := []Release{
 		{Version: "5.0.3", Status: "published", CoreCompatibility: "^10.3 || ^11"},
 		{Version: "5.0.2", Status: "published", CoreCompatibility: "^10.3 || ^11"},
@@ -82,6 +85,7 @@ func TestLatestPerBranch_WithBranches(t *testing.T) {
 }
 
 func TestLatestPerBranch_SkipsUnpublished(t *testing.T) {
+	t.Parallel()
 	releases := []Release{
 		{Version: "2.0.1", Status: "unpublished"},
 		{Version: "2.0.0", Status: "published", CoreCompatibility: "^10"},
@@ -99,6 +103,7 @@ func TestLatestPerBranch_SkipsUnpublished(t *testing.T) {
 }
 
 func TestLatestPerBranch_NoBranches_FallsBackToRecent(t *testing.T) {
+	t.Parallel()
 	releases := []Release{
 		{Version: "3.0.0", Status: "published"},
 		{Version: "2.0.0", Status: "published"},
@@ -113,6 +118,7 @@ func TestLatestPerBranch_NoBranches_FallsBackToRecent(t *testing.T) {
 }
 
 func TestLatestPerBranch_MissingBranch(t *testing.T) {
+	t.Parallel()
 	releases := []Release{
 		{Version: "5.0.1", Status: "published"},
 	}

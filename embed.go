@@ -2,6 +2,7 @@ package drupalupdate
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 )
 
@@ -16,5 +17,9 @@ var frontendFS embed.FS
 // FrontendFS returns the embedded frontend files as an fs.FS
 // rooted at the frontend/ directory.
 func FrontendFS() (fs.FS, error) {
-	return fs.Sub(frontendFS, "frontend")
+	sub, err := fs.Sub(frontendFS, "frontend")
+	if err != nil {
+		return nil, fmt.Errorf("frontend fs: %w", err)
+	}
+	return sub, nil
 }

@@ -3,12 +3,15 @@
 package drupalupdate
 
 import (
+	"context"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -36,12 +39,18 @@ type ReleaseHistory struct {
 
 // Release represents a single release from drupal.org or Packagist.
 type Release struct {
-	Name              string `xml:"name" json:"name"`
-	Version           string `xml:"version" json:"version"`
+	Name              string `json:"name"                         xml:"name"`
+	Version           string `json:"version"                      xml:"version"`
 	VersionPin        string `json:"version_pin"`
-	Status            string `xml:"status" json:"-"`
-	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility,omitempty"`
+	Status            string `json:"-"                            xml:"status"`
+	CoreCompatibility string `json:"core_compatibility,omitempty" xml:"core_compatibility"`
 }
+
+// errHTTPStatus is returned when an HTTP request returns a non-OK status.
+var (
+	errHTTPStatus  = errors.New("unexpected HTTP status")
+	errInvalidPath = errors.New("invalid path")
+)
 
 // PackagistResponse represents the response from the Packagist p2 API.
 type PackagistResponse struct {
@@ -62,7 +71,7 @@ type PackagistVersion struct {
 func ParseComposerJSON(data []byte) (*ComposerJSON, error) {
 	var c ComposerJSON
 	if err := json.Unmarshal(data, &c); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse composer.json: %w", err)
 	}
 	c.Raw = data
 	return &c, nil
@@ -70,9 +79,13 @@ func ParseComposerJSON(data []byte) (*ComposerJSON, error) {
 
 // ReadComposerJSON reads and parses a composer.json file from disk.
 func ReadComposerJSON(path string) (*ComposerJSON, error) {
+	path = filepath.Clean(path)
+	if path == "" || path == "." || strings.Contains(path, "..") {
+		return nil, fmt.Errorf("%w: %s", errInvalidPath, path)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read %s: %w", path, err)
 	}
 	return ParseComposerJSON(data)
 }
@@ -82,14 +95,14 @@ func ReadComposerJSON(path string) (*ComposerJSON, error) {
 func MarshalComposerJSON(c *ComposerJSON) ([]byte, error) {
 	var original map[string]any
 	if err := json.Unmarshal(c.Raw, &original); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshal raw: %w", err)
 	}
 
 	original["require"] = sortedRequire(c.Require)
 
 	output, err := json.MarshalIndent(original, "", "    ")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshal: %w", err)
 	}
 	return append(output, '\n'), nil
 }
@@ -100,7 +113,10 @@ func WriteComposerJSON(path string, c *ComposerJSON) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }
 
 // sortedRequire returns require entries in sorted key order.
@@ -255,14 +271,14 @@ func NewClientWithHTTP(drupalBaseURL, packagistBaseURL string, httpClient *http.
 // it queries the "drupal" project on drupal.org.
 // For other drupal/* packages, it queries drupal.org by module name.
 // For all other packages, it queries Packagist.
-func (c *Client) FetchReleasesForPackage(packageName string) ([]Release, error) {
+func (c *Client) FetchReleasesForPackage(ctx context.Context, packageName string) ([]Release, error) {
 	if moduleName, ok := DrupalModuleName(packageName); ok {
 		if IsCorePackage(moduleName) {
-			return c.FetchReleases("drupal")
+			return c.FetchReleases(ctx, "drupal")
 		}
-		return c.FetchReleases(moduleName)
+		return c.FetchReleases(ctx, moduleName)
 	}
-	return c.FetchPackagistReleases(packageName)
+	return c.FetchPackagistReleases(ctx, packageName)
 }
 
 // =============================================================================
@@ -270,31 +286,35 @@ func (c *Client) FetchReleasesForPackage(packageName string) ([]Release, error) 
 // =============================================================================
 
 // FetchReleases fetches the latest release per supported branch for a Drupal module.
-func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
+func (c *Client) FetchReleases(ctx context.Context, moduleName string) (result []Release, err error) {
 	url := fmt.Sprintf("%s/%s/current", c.BaseURL, moduleName)
 
-	resp, err := c.HTTPClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build request: %w", err)
 	}
-	defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request: %w", err)
+	}
+	defer func() { err = errors.Join(err, resp.Body.Close()) }()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %d", errHTTPStatus, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	var history ReleaseHistory
 	if err := xml.Unmarshal(body, &history); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode XML: %w", err)
 	}
 
 	branches := parseSupportedBranches(history.SupportedBranches)
-	result := latestPerBranch(history.Releases, branches)
+	result = latestPerBranch(history.Releases, branches)
 	for i := range result {
 		result[i].VersionPin = ParseVersion(result[i].Version).VersionPin()
 	}
@@ -308,31 +328,35 @@ func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
 
 // FetchPackagistReleases fetches the latest stable release per major version
 // from the Packagist p2 API.
-func (c *Client) FetchPackagistReleases(packageName string) ([]Release, error) {
+func (c *Client) FetchPackagistReleases(ctx context.Context, packageName string) (releases []Release, err error) {
 	url := fmt.Sprintf("%s/p2/%s.json", c.PackagistBaseURL, packageName)
 
-	resp, err := c.HTTPClient.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build request: %w", err)
 	}
-	defer resp.Body.Close()
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request: %w", err)
+	}
+	defer func() { err = errors.Join(err, resp.Body.Close()) }()
 
-	if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%w: %d", errHTTPStatus, resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("read body: %w", err)
 	}
 
 	var result PackagistResponse
 	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("decode JSON: %w", err)
 	}
 
 	versions := result.Packages[packageName]
-	releases := LatestStablePerMajor(packageName, versions)
+	releases = LatestStablePerMajor(packageName, versions)
 	sortReleases(releases)
 	return releases, nil
 }
@@ -392,7 +416,7 @@ func LatestStablePerMajor(packageName string, versions []PackagistVersion) []Rel
 // =============================================================================
 
 // parseSupportedBranches splits a comma-separated branches string.
-// Example: "3.0.,4.0.,5.0." -> ["3.0.", "4.0.", "5.0."]
+// Example: "3.0.,4.0.,5.0." -> ["3.0.", "4.0.", "5.0."].
 func parseSupportedBranches(branches string) []string {
 	if branches == "" {
 		return nil

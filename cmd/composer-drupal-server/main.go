@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	drupalupdate "github.com/FAU-CDI/composer-drupal-update"
 	"github.com/swaggest/swgui/v5emb"
@@ -26,7 +27,9 @@ func main() {
 	// Serve the OpenAPI spec
 	mux.HandleFunc("GET /openapi.yaml", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/x-yaml")
-		w.Write(drupalupdate.OpenAPISpec)
+		if _, err := w.Write(drupalupdate.OpenAPISpec); err != nil {
+			log.Printf("openapi.yaml: write failed: %v", err)
+		}
 	})
 
 	// Swagger UI at /doc/
@@ -43,6 +46,14 @@ func main() {
 	}
 	mux.Handle("GET /", http.FileServer(http.FS(frontendFiles)))
 
+	srv := &http.Server{
+		Addr:              *addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:      120 * time.Second,
+	}
 	fmt.Printf("Starting server on %s\n", *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	log.Fatal(srv.ListenAndServe())
 }

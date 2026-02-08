@@ -19,6 +19,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Run golangci-lint
+        run: go tool golangci-lint run ./...
+
       - name: Build CLI
         run: go build -o /dev/null ./cmd/composer-drupal-update
 

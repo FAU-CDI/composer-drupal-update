@@ -49,6 +49,16 @@ cd frontend && yarn test
 cd frontend && yarn typecheck
 ```
 
+### Linting
+
+The project uses [golangci-lint](https://golangci-lint.run/) with a strict configuration (see [.golangci.yml](.golangci.yml)). Run the linter locally:
+
+```
+go tool golangci-lint run ./...
+```
+
+The config enables the default “standard” linter set plus many extra linters (e.g. `errcheck`, `govet`, `staticcheck`, `gosec`, `wrapcheck`, `paralleltest`, `usestdlibvars`). All issues must be fixed (no per-linter caps). `nolint` comments require an explanation and must target a specific linter; `paralleltest` and `tparallel` may be exempt from explanation where needed.
+
 ## License
 
 [WTFPL](http://www.wtfpl.net/) — Do What The Fuck You Want To Public License. See [LICENSE](LICENSE).

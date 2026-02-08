@@ -16,6 +16,7 @@ import (
 // =============================================================================
 
 func TestParseComposerJSON(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "name": "drupal/example",
     "require": {
@@ -43,6 +44,7 @@ func TestParseComposerJSON(t *testing.T) {
 }
 
 func TestParseComposerJSON_Invalid(t *testing.T) {
+	t.Parallel()
 	_, err := drupalupdate.ParseComposerJSON([]byte(`not json`))
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
@@ -54,6 +56,7 @@ func TestParseComposerJSON_Invalid(t *testing.T) {
 // =============================================================================
 
 func TestMarshalComposerJSON_PreservesExtraFields(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "name": "drupal/example",
     "require": {
@@ -99,6 +102,7 @@ func TestMarshalComposerJSON_PreservesExtraFields(t *testing.T) {
 }
 
 func TestMarshalComposerJSON_SortsRequire(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{"require": {"z/z": "1", "a/a": "2", "m/m": "3"}}`)
 
 	c, err := drupalupdate.ParseComposerJSON(input)
@@ -126,6 +130,7 @@ func TestMarshalComposerJSON_SortsRequire(t *testing.T) {
 // =============================================================================
 
 func TestReadWriteComposerJSON(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	path := filepath.Join(dir, "composer.json")
 
@@ -135,7 +140,7 @@ func TestReadWriteComposerJSON(t *testing.T) {
         "drupal/foo": "^1.0"
     }
 }`)
-	if err := os.WriteFile(path, original, 0644); err != nil {
+	if err := os.WriteFile(path, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -161,6 +166,7 @@ func TestReadWriteComposerJSON(t *testing.T) {
 }
 
 func TestReadComposerJSON_FileNotFound(t *testing.T) {
+	t.Parallel()
 	_, err := drupalupdate.ReadComposerJSON("/nonexistent/composer.json")
 	if err == nil {
 		t.Fatal("expected error for missing file")
@@ -172,6 +178,7 @@ func TestReadComposerJSON_FileNotFound(t *testing.T) {
 // =============================================================================
 
 func TestIsCorePackage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		want bool
@@ -197,6 +204,7 @@ func TestIsCorePackage(t *testing.T) {
 // =============================================================================
 
 func TestDrupalModuleName(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input        string
 		wantName     string
@@ -221,6 +229,7 @@ func TestDrupalModuleName(t *testing.T) {
 // =============================================================================
 
 func TestIsSkippablePackage(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name string
 		want bool
@@ -251,6 +260,7 @@ func TestIsSkippablePackage(t *testing.T) {
 // =============================================================================
 
 func TestDrupalPackages(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "require": {
         "drupal/admin_toolbar": "^3.6",
@@ -283,6 +293,7 @@ func TestDrupalPackages(t *testing.T) {
 // =============================================================================
 
 func TestComposerPackages(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "require": {
         "drupal/admin_toolbar": "^3.6",
@@ -324,6 +335,7 @@ func TestComposerPackages(t *testing.T) {
 }
 
 func TestComposerPackages_Empty(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "require": {
         "drupal/gin": "^5.0",
@@ -346,6 +358,7 @@ func TestComposerPackages_Empty(t *testing.T) {
 // =============================================================================
 
 func TestCorePackages(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "require": {
         "drupal/core-recommended": "^11",
@@ -382,6 +395,7 @@ func TestCorePackages(t *testing.T) {
 }
 
 func TestCorePackages_Empty(t *testing.T) {
+	t.Parallel()
 	input := []byte(`{
     "require": {
         "drupal/gin": "^5.0",
@@ -404,6 +418,7 @@ func TestCorePackages_Empty(t *testing.T) {
 // =============================================================================
 
 func TestIsStableVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		version string
 		want    bool
@@ -428,6 +443,7 @@ func TestIsStableVersion(t *testing.T) {
 }
 
 func TestMajorVersion(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		input string
 		want  string
@@ -445,6 +461,7 @@ func TestMajorVersion(t *testing.T) {
 }
 
 func TestLatestStablePerMajor(t *testing.T) {
+	t.Parallel()
 	versions := []drupalupdate.PackagistVersion{
 		{Version: "13.0.1", VersionNormalized: "13.0.1.0"},
 		{Version: "13.0.0", VersionNormalized: "13.0.0.0"},
@@ -486,6 +503,7 @@ func TestLatestStablePerMajor(t *testing.T) {
 }
 
 func TestLatestStablePerMajor_StripsVPrefix(t *testing.T) {
+	t.Parallel()
 	versions := []drupalupdate.PackagistVersion{
 		{Version: "v2.1.0", VersionNormalized: "2.1.0.0"},
 		{Version: "v1.5.0", VersionNormalized: "1.5.0.0"},
@@ -505,6 +523,7 @@ func TestLatestStablePerMajor_StripsVPrefix(t *testing.T) {
 }
 
 func TestLatestStablePerMajor_AllUnstable(t *testing.T) {
+	t.Parallel()
 	versions := []drupalupdate.PackagistVersion{
 		{Version: "dev-main", VersionNormalized: "9999999-dev"},
 		{Version: "1.0.0-alpha1", VersionNormalized: "1.0.0.0-alpha1"},
@@ -556,19 +575,22 @@ const sampleXML = `<?xml version="1.0" encoding="utf-8"?>
 </project>`
 
 func TestFetchReleases(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/admin_toolbar/current" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/xml")
-		w.Write([]byte(sampleXML))
+		if _, err := w.Write([]byte(sampleXML)); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 
 	client := drupalupdate.NewClientWithHTTP(server.URL, "", &http.Client{})
 
-	releases, err := client.FetchReleases("admin_toolbar")
+	releases, err := client.FetchReleases(t.Context(), "admin_toolbar")
 	if err != nil {
 		t.Fatalf("FetchReleases returned error: %v", err)
 	}
@@ -595,6 +617,7 @@ func TestFetchReleases(t *testing.T) {
 }
 
 func TestFetchReleases_NotFound(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -602,21 +625,24 @@ func TestFetchReleases_NotFound(t *testing.T) {
 
 	client := drupalupdate.NewClientWithHTTP(server.URL, "", &http.Client{})
 
-	_, err := client.FetchReleases("nonexistent_module")
+	_, err := client.FetchReleases(t.Context(), "nonexistent_module")
 	if err == nil {
 		t.Fatal("expected error for 404 response")
 	}
 }
 
 func TestFetchReleases_InvalidXML(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("this is not xml"))
+		if _, err := w.Write([]byte("this is not xml")); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 
 	client := drupalupdate.NewClientWithHTTP(server.URL, "", &http.Client{})
 
-	_, err := client.FetchReleases("broken")
+	_, err := client.FetchReleases(t.Context(), "broken")
 	if err == nil {
 		t.Fatal("expected error for invalid XML")
 	}
@@ -641,19 +667,22 @@ const samplePackagistJSON = `{
 }`
 
 func TestFetchPackagistReleases(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/p2/drush/drush.json" {
 			http.NotFound(w, r)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(samplePackagistJSON))
+		if _, err := w.Write([]byte(samplePackagistJSON)); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 
 	client := drupalupdate.NewClientWithHTTP("", server.URL, &http.Client{})
 
-	releases, err := client.FetchPackagistReleases("drush/drush")
+	releases, err := client.FetchPackagistReleases(t.Context(), "drush/drush")
 	if err != nil {
 		t.Fatalf("FetchPackagistReleases returned error: %v", err)
 	}
@@ -674,6 +703,7 @@ func TestFetchPackagistReleases(t *testing.T) {
 }
 
 func TestFetchPackagistReleases_NotFound(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	}))
@@ -681,21 +711,24 @@ func TestFetchPackagistReleases_NotFound(t *testing.T) {
 
 	client := drupalupdate.NewClientWithHTTP("", server.URL, &http.Client{})
 
-	_, err := client.FetchPackagistReleases("nonexistent/package")
+	_, err := client.FetchPackagistReleases(t.Context(), "nonexistent/package")
 	if err == nil {
 		t.Fatal("expected error for 404 response")
 	}
 }
 
 func TestFetchPackagistReleases_InvalidJSON(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+		if _, err := w.Write([]byte("not json")); err != nil {
+			return
+		}
 	}))
 	defer server.Close()
 
 	client := drupalupdate.NewClientWithHTTP("", server.URL, &http.Client{})
 
-	_, err := client.FetchPackagistReleases("broken/pkg")
+	_, err := client.FetchPackagistReleases(t.Context(), "broken/pkg")
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -706,15 +739,18 @@ func TestFetchPackagistReleases_InvalidJSON(t *testing.T) {
 // =============================================================================
 
 func TestFetchReleasesForPackage_RoutesDrupal(t *testing.T) {
+	t.Parallel()
 	drupalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/gin/current" {
-			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+			if _, err := w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
 				<project>
 					<supported_branches>5.0.</supported_branches>
 					<releases>
 						<release><name>gin 5.0.3</name><version>5.0.3</version><status>published</status></release>
 					</releases>
-				</project>`))
+				</project>`)); err != nil {
+				return
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -729,7 +765,7 @@ func TestFetchReleasesForPackage_RoutesDrupal(t *testing.T) {
 
 	client := drupalupdate.NewClientWithHTTP(drupalServer.URL, packagistServer.URL, &http.Client{})
 
-	releases, err := client.FetchReleasesForPackage("drupal/gin")
+	releases, err := client.FetchReleasesForPackage(t.Context(), "drupal/gin")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -739,9 +775,10 @@ func TestFetchReleasesForPackage_RoutesDrupal(t *testing.T) {
 }
 
 func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
+	t.Parallel()
 	drupalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/drupal/current" {
-			w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
+			if _, err := w.Write([]byte(`<?xml version="1.0" encoding="utf-8"?>
 				<project>
 					<supported_branches>10.4.,11.0.,11.1.</supported_branches>
 					<releases>
@@ -749,7 +786,9 @@ func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
 						<release><name>drupal 11.0.8</name><version>11.0.8</version><status>published</status></release>
 						<release><name>drupal 10.4.3</name><version>10.4.3</version><status>published</status></release>
 					</releases>
-				</project>`))
+				</project>`)); err != nil {
+				return
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -765,7 +804,7 @@ func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
 	client := drupalupdate.NewClientWithHTTP(drupalServer.URL, packagistServer.URL, &http.Client{})
 
 	// Any core package name should route to drupal.org project "drupal"
-	releases, err := client.FetchReleasesForPackage("drupal/core-recommended")
+	releases, err := client.FetchReleasesForPackage(t.Context(), "drupal/core-recommended")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -785,6 +824,7 @@ func TestFetchReleasesForPackage_RoutesCore(t *testing.T) {
 }
 
 func TestFetchReleasesForPackage_RoutesPackagist(t *testing.T) {
+	t.Parallel()
 	drupalServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("Drupal should not be called for non-drupal packages")
 		http.NotFound(w, r)
@@ -793,7 +833,9 @@ func TestFetchReleasesForPackage_RoutesPackagist(t *testing.T) {
 
 	packagistServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/p2/drush/drush.json" {
-			w.Write([]byte(samplePackagistJSON))
+			if _, err := w.Write([]byte(samplePackagistJSON)); err != nil {
+				return
+			}
 			return
 		}
 		http.NotFound(w, r)
@@ -802,7 +844,7 @@ func TestFetchReleasesForPackage_RoutesPackagist(t *testing.T) {
 
 	client := drupalupdate.NewClientWithHTTP(drupalServer.URL, packagistServer.URL, &http.Client{})
 
-	releases, err := client.FetchReleasesForPackage("drush/drush")
+	releases, err := client.FetchReleasesForPackage(t.Context(), "drush/drush")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

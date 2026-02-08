@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -26,6 +27,7 @@ func main() {
 	client := drupalupdate.NewClient()
 	reader := bufio.NewReader(os.Stdin)
 	changed := false
+	ctx := context.Background()
 
 	// Process Drupal Core
 	corePkgs := drupalupdate.CorePackages(composer)
@@ -40,10 +42,11 @@ func main() {
 		}
 		fmt.Println()
 
-		releases, err := client.FetchReleases("drupal")
-		if err != nil {
+		releases, err := client.FetchReleases(ctx, "drupal")
+		switch {
+		case err != nil:
 			fmt.Printf("  Could not fetch core releases: %v\n", err)
-		} else if len(releases) > 0 {
+		case len(releases) > 0:
 			newVersion := selectVersion(reader, "Drupal Core", corePkgs[0].Version, releases)
 			if newVersion != "" && newVersion != corePkgs[0].Version {
 				for _, pkg := range corePkgs {
@@ -51,7 +54,7 @@ func main() {
 				}
 				changed = true
 			}
-		} else {
+		default:
 			fmt.Println("  No releases found")
 		}
 	}
@@ -61,7 +64,7 @@ func main() {
 	if len(drupalPkgs) > 0 {
 		fmt.Println("\n=== Drupal Packages ===")
 		for _, pkg := range drupalPkgs {
-			releases, err := client.FetchReleases(pkg.Module)
+			releases, err := client.FetchReleases(ctx, pkg.Module)
 			if err != nil {
 				fmt.Printf("  [%s] Could not fetch releases: %v\n", pkg.Name, err)
 				continue
@@ -84,7 +87,7 @@ func main() {
 	if len(composerPkgs) > 0 {
 		fmt.Println("\n=== Composer Packages ===")
 		for _, pkg := range composerPkgs {
-			releases, err := client.FetchPackagistReleases(pkg.Name)
+			releases, err := client.FetchPackagistReleases(ctx, pkg.Name)
 			if err != nil {
 				fmt.Printf("  [%s] Could not fetch releases: %v\n", pkg.Name, err)
 				continue
