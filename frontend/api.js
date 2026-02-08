@@ -10,8 +10,8 @@
 
 /**
  * @typedef {Object} Package
- * @property {string} name   - e.g. "drupal/gin"
- * @property {string} module - e.g. "gin"
+ * @property {string} name   - e.g. "drupal/gin" or "drush/drush"
+ * @property {string} module - identifier for fetching releases
  * @property {string} version
  */
 
@@ -24,12 +24,13 @@
 
 /**
  * @typedef {Object} ParseResponse
- * @property {Package[]} packages
+ * @property {Package[]} drupal_packages
+ * @property {Package[]} composer_packages
  */
 
 /**
  * @typedef {Object} ReleasesResponse
- * @property {string} module
+ * @property {string} package
  * @property {Release[]} releases
  */
 
@@ -84,7 +85,7 @@ export async function getJSON(url) {
 
 /**
  * Call POST /api/parse with a composer.json object.
- * Returns the list of drupal packages.
+ * Returns Drupal and Composer packages separately.
  * @param {Record<string, any>} composerJSON
  * @returns {Promise<ParseResponse>}
  */
@@ -93,12 +94,13 @@ export async function parseComposer(composerJSON) {
 }
 
 /**
- * Call GET /api/releases?module=... to fetch releases for a module.
- * @param {string} moduleName
+ * Call GET /api/releases?package=... to fetch releases for a package.
+ * The server automatically routes to drupal.org or Packagist.
+ * @param {string} packageName - full composer package name (e.g. "drupal/gin" or "drush/drush")
  * @returns {Promise<ReleasesResponse>}
  */
-export async function fetchReleases(moduleName) {
-  return getJSON("/api/releases?module=" + encodeURIComponent(moduleName));
+export async function fetchReleases(packageName) {
+  return getJSON("/api/releases?package=" + encodeURIComponent(packageName));
 }
 
 /**

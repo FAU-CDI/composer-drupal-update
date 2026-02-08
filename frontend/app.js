@@ -16,7 +16,9 @@ import { parseComposer, fetchReleases, updateComposer, buildVersionMap, buildCom
 // =============================================================================
 
 /** @type {PackageState[]} */
-let packages = [];
+let drupalPackages = [];
+/** @type {PackageState[]} */
+let composerPackages = [];
 /** Whether the textarea is currently editable. */
 let editing = false;
 
@@ -24,24 +26,24 @@ let editing = false;
 // DOM Elements
 // =============================================================================
 
-const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById("composer-textarea"));
-const statusEl = /** @type {HTMLParagraphElement} */ (document.getElementById("status"));
-const packagesBody = /** @type {HTMLTableSectionElement} */ (document.getElementById("packages-body"));
-const dropZone = /** @type {HTMLDivElement} */ (document.getElementById("drop-zone"));
-const fileInput = /** @type {HTMLInputElement} */ (document.getElementById("file-input"));
-const btnEdit = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
-const btnDownload = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
-const btnApply = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
+const textarea       = /** @type {HTMLTextAreaElement} */ (document.getElementById("composer-textarea"));
+const statusEl       = /** @type {HTMLParagraphElement} */ (document.getElementById("status"));
+const packagesBody   = /** @type {HTMLTableSectionElement} */ (document.getElementById("packages-body"));
+const dropZone       = /** @type {HTMLDivElement} */ (document.getElementById("drop-zone"));
+const fileInput      = /** @type {HTMLInputElement} */ (document.getElementById("file-input"));
+const btnEdit        = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
+const btnDownload    = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
+const btnApply       = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
 const commandsOutput = /** @type {HTMLPreElement} */ (document.getElementById("commands-output"));
-const commandsEmpty = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
-const btnCopy = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy"));
-const tabPackages = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
+const commandsEmpty  = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
+const btnCopy        = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy"));
+const tabPackages    = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
 
 // =============================================================================
 // Tabs
 // =============================================================================
 
-const tabs = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab"));
+const tabs   = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab"));
 const panels = /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".tab-panel"));
 
 /**
@@ -67,7 +69,8 @@ function startEditing() {
   textarea.readOnly = false;
   btnEdit.textContent = "Done Editing";
   dropZone.classList.add("disabled");
-  packages = [];
+  drupalPackages = [];
+  composerPackages = [];
   renderTable();
   btnApply.disabled = true;
   setStatus("Editing. Click 'Done Editing' when finished.");
@@ -94,6 +97,11 @@ function toggleEdit() {
 // =============================================================================
 // Core Logic
 // =============================================================================
+
+/** @returns {PackageState[]} All packages (both Drupal and Composer). */
+function allPackages() {
+  return [...drupalPackages, ...composerPackages];
+}
 
 /** Parse the composer.json from the textarea, fetch releases, and render the table. */
 async function loadComposer() {
@@ -122,7 +130,14 @@ async function loadComposer() {
     return;
   }
 
-  packages = parsed.packages.map(pkg => ({
+  drupalPackages = (parsed.drupal_packages || []).map(pkg => ({
+    name: pkg.name,
+    module: pkg.module,
+    version: pkg.version,
+    releases: /** @type {Release[]} */ ([]),
+  }));
+
+  composerPackages = (parsed.composer_packages || []).map(pkg => ({
     name: pkg.name,
     module: pkg.module,
     version: pkg.version,
@@ -132,9 +147,10 @@ async function loadComposer() {
   setStatus("Fetching releases...");
   renderTable();
 
-  await Promise.all(packages.map(async (pkg) => {
+  const all = allPackages();
+  await Promise.all(all.map(async (pkg) => {
     try {
-      const data = await fetchReleases(pkg.module);
+      const data = await fetchReleases(pkg.name);
       pkg.releases = data.releases || [];
     } catch (e) {
       pkg.releases = [];
@@ -160,8 +176,8 @@ async function applyVersions() {
   }
 
   /** @type {VersionSelection[]} */
-  const withSelections = packages.map(pkg => {
-    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.module));
+  const withSelections = allPackages().map(pkg => {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
     return {
       name: pkg.name,
       version: pkg.version,
@@ -195,8 +211,8 @@ async function applyVersions() {
 /** Check if any version dropdown differs from the current version, update tab title. */
 function updatePackagesTabDirty() {
   let dirty = false;
-  for (const pkg of packages) {
-    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.module));
+  for (const pkg of allPackages()) {
+    const select = /** @type {HTMLSelectElement | null} */ (document.getElementById("select-" + pkg.name));
     if (select && select.value !== pkg.version) {
       dirty = true;
       break;
@@ -210,64 +226,108 @@ function updatePackagesTabDirty() {
 // Rendering
 // =============================================================================
 
+/**
+ * Render a section header row in the packages table.
+ * @param {string} title
+ */
+function renderSectionHeader(title) {
+  const row = document.createElement("tr");
+  const cell = document.createElement("td");
+  cell.colSpan = 3;
+  cell.innerHTML = "<strong>" + title + "</strong>";
+  cell.style.background = "#eee";
+  row.appendChild(cell);
+  packagesBody.appendChild(row);
+}
+
+/**
+ * Render a single package row.
+ * @param {PackageState} pkg
+ * @param {boolean} isDrupal
+ */
+function renderPackageRow(pkg, isDrupal) {
+  const row = document.createElement("tr");
+
+  // Package name (linked)
+  const nameCell = document.createElement("td");
+  const link = document.createElement("a");
+  if (isDrupal) {
+    link.href = "https://www.drupal.org/project/" + pkg.module + "#project-releases";
+  } else {
+    link.href = "https://packagist.org/packages/" + pkg.name;
+  }
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = pkg.name;
+  nameCell.appendChild(link);
+  row.appendChild(nameCell);
+
+  // Current version
+  const versionCell = document.createElement("td");
+  versionCell.textContent = pkg.version;
+  row.appendChild(versionCell);
+
+  // Dropdown for available versions
+  const selectCell = document.createElement("td");
+  if (pkg.releases.length > 0) {
+    const select = document.createElement("select");
+    select.id = "select-" + pkg.name;
+
+    const keepOption = document.createElement("option");
+    keepOption.value = pkg.version;
+    keepOption.textContent = pkg.version + " (current)";
+    select.appendChild(keepOption);
+
+    for (const release of pkg.releases) {
+      const option = document.createElement("option");
+      option.value = "^" + release.version;
+      if (release.core_compatibility) {
+        option.textContent = "^" + release.version + "  (core: " + release.core_compatibility + ")";
+      } else {
+        option.textContent = "^" + release.version;
+      }
+      select.appendChild(option);
+    }
+
+    // Update dirty indicator when user changes selection
+    select.addEventListener("change", () => updatePackagesTabDirty());
+
+    selectCell.appendChild(select);
+  } else {
+    selectCell.textContent = "Loading...";
+  }
+  row.appendChild(selectCell);
+
+  packagesBody.appendChild(row);
+}
+
 /** Render the packages table with dropdowns, and update the commands block. */
 function renderTable() {
   updateCommands();
   updatePackagesTabDirty();
 
-  if (packages.length === 0) {
-    packagesBody.innerHTML = '<tr><td colspan="3">No Drupal packages found.</td></tr>';
+  const hasDrupal = drupalPackages.length > 0;
+  const hasComposer = composerPackages.length > 0;
+
+  if (!hasDrupal && !hasComposer) {
+    packagesBody.innerHTML = '<tr><td colspan="3">No packages found.</td></tr>';
     return;
   }
 
   packagesBody.innerHTML = "";
-  for (const pkg of packages) {
-    const row = document.createElement("tr");
 
-    // Package name (linked to drupal.org)
-    const nameCell = document.createElement("td");
-    const link = document.createElement("a");
-    link.href = "https://www.drupal.org/project/" + pkg.module + "#project-releases";
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.textContent = pkg.name;
-    nameCell.appendChild(link);
-    row.appendChild(nameCell);
-
-    // Current version
-    const versionCell = document.createElement("td");
-    versionCell.textContent = pkg.version;
-    row.appendChild(versionCell);
-
-    // Dropdown for available versions
-    const selectCell = document.createElement("td");
-    if (pkg.releases.length > 0) {
-      const select = document.createElement("select");
-      select.id = "select-" + pkg.module;
-
-      const keepOption = document.createElement("option");
-      keepOption.value = pkg.version;
-      keepOption.textContent = pkg.version + " (current)";
-      select.appendChild(keepOption);
-
-      for (const release of pkg.releases) {
-        const option = document.createElement("option");
-        option.value = "^" + release.version;
-        const core = release.core_compatibility || "unknown";
-        option.textContent = "^" + release.version + "  (core: " + core + ")";
-        select.appendChild(option);
-      }
-
-      // Update dirty indicator when user changes selection
-      select.addEventListener("change", () => updatePackagesTabDirty());
-
-      selectCell.appendChild(select);
-    } else {
-      selectCell.textContent = "Loading...";
+  if (hasDrupal) {
+    if (hasComposer) renderSectionHeader("Drupal Packages");
+    for (const pkg of drupalPackages) {
+      renderPackageRow(pkg, true);
     }
-    row.appendChild(selectCell);
+  }
 
-    packagesBody.appendChild(row);
+  if (hasComposer) {
+    if (hasDrupal) renderSectionHeader("Composer Packages");
+    for (const pkg of composerPackages) {
+      renderPackageRow(pkg, false);
+    }
   }
 }
 

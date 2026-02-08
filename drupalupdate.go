@@ -1,5 +1,5 @@
 // Package drupalupdate provides functions for reading composer.json files
-// and fetching Drupal module release information from drupal.org.
+// and fetching release information from drupal.org and Packagist.
 package drupalupdate
 
 import (
@@ -33,12 +33,23 @@ type ReleaseHistory struct {
 	Releases          []Release `xml:"releases>release"`
 }
 
-// Release represents a single release from drupal.org.
+// Release represents a single release from drupal.org or Packagist.
 type Release struct {
 	Name              string `xml:"name" json:"name"`
 	Version           string `xml:"version" json:"version"`
 	Status            string `xml:"status" json:"-"`
-	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility"`
+	CoreCompatibility string `xml:"core_compatibility" json:"core_compatibility,omitempty"`
+}
+
+// PackagistResponse represents the response from the Packagist p2 API.
+type PackagistResponse struct {
+	Packages map[string][]PackagistVersion `json:"packages"`
+}
+
+// PackagistVersion represents a single version entry from the Packagist API.
+type PackagistVersion struct {
+	Version           string `json:"version"`
+	VersionNormalized string `json:"version_normalized"`
 }
 
 // =============================================================================
@@ -106,7 +117,7 @@ func sortedRequire(require map[string]string) map[string]string {
 }
 
 // =============================================================================
-// Drupal Package Helpers
+// Package Classification
 // =============================================================================
 
 // IsCorePackage returns true if the drupal module name is a core package
@@ -128,10 +139,23 @@ func DrupalModuleName(packageName string) (string, bool) {
 	return strings.TrimPrefix(packageName, "drupal/"), true
 }
 
-// Package represents a drupal module found in composer.json.
+// IsSkippablePackage returns true for packages that should not be offered
+// for version updates. This includes PHP itself, PHP extensions, and Drupal
+// core infrastructure packages.
+func IsSkippablePackage(name string) bool {
+	if name == "php" || name == "composer" || strings.HasPrefix(name, "ext-") || strings.HasPrefix(name, "lib-") {
+		return true
+	}
+	if moduleName, ok := DrupalModuleName(name); ok && IsCorePackage(moduleName) {
+		return true
+	}
+	return false
+}
+
+// Package represents a composer package found in composer.json.
 type Package struct {
-	Name    string `json:"name"`    // composer package name, e.g. "drupal/gin"
-	Module  string `json:"module"`  // drupal module name, e.g. "gin"
+	Name    string `json:"name"`    // composer package name, e.g. "drupal/gin" or "drush/drush"
+	Module  string `json:"module"`  // identifier for fetching releases (drupal module name or full package name)
 	Version string `json:"version"` // current version constraint, e.g. "^5.0"
 }
 
@@ -152,38 +176,76 @@ func DrupalPackages(c *ComposerJSON) []Package {
 	return pkgs
 }
 
+// ComposerPackages extracts all non-Drupal, non-skippable packages from a ComposerJSON.
+func ComposerPackages(c *ComposerJSON) []Package {
+	var pkgs []Package
+	for name, version := range c.Require {
+		if IsSkippablePackage(name) {
+			continue
+		}
+		if _, isDrupal := DrupalModuleName(name); isDrupal {
+			continue
+		}
+		pkgs = append(pkgs, Package{Name: name, Module: name, Version: version})
+	}
+	sort.Slice(pkgs, func(i, j int) bool {
+		return pkgs[i].Name < pkgs[j].Name
+	})
+	return pkgs
+}
+
 // =============================================================================
-// Drupal.org Release API
+// Release API Client
 // =============================================================================
 
 // DefaultBaseURL is the default base URL for the drupal.org release history API.
 const DefaultBaseURL = "https://updates.drupal.org/release-history"
 
-// Client fetches release information from drupal.org.
+// DefaultPackagistBaseURL is the default base URL for the Packagist p2 API.
+const DefaultPackagistBaseURL = "https://repo.packagist.org"
+
+// Client fetches release information from drupal.org and Packagist.
 // Use NewClient() for production or NewClientWithHTTP() for testing.
 type Client struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL          string
+	PackagistBaseURL string
+	HTTPClient       *http.Client
 }
 
-// NewClient creates a Client that talks to the real drupal.org API.
+// NewClient creates a Client that talks to the real drupal.org and Packagist APIs.
 func NewClient() *Client {
 	return &Client{
-		BaseURL:    DefaultBaseURL,
-		HTTPClient: http.DefaultClient,
+		BaseURL:          DefaultBaseURL,
+		PackagistBaseURL: DefaultPackagistBaseURL,
+		HTTPClient:       http.DefaultClient,
 	}
 }
 
-// NewClientWithHTTP creates a Client with a custom HTTP client and base URL.
+// NewClientWithHTTP creates a Client with custom base URLs and HTTP client.
 // This is useful for testing with httptest.Server.
-func NewClientWithHTTP(baseURL string, httpClient *http.Client) *Client {
+func NewClientWithHTTP(drupalBaseURL, packagistBaseURL string, httpClient *http.Client) *Client {
 	return &Client{
-		BaseURL:    baseURL,
-		HTTPClient: httpClient,
+		BaseURL:          drupalBaseURL,
+		PackagistBaseURL: packagistBaseURL,
+		HTTPClient:       httpClient,
 	}
 }
 
-// FetchReleases fetches the latest release per supported branch for a module.
+// FetchReleasesForPackage fetches releases for any composer package.
+// For drupal/* packages (excluding core), it queries drupal.org.
+// For all other packages, it queries Packagist.
+func (c *Client) FetchReleasesForPackage(packageName string) ([]Release, error) {
+	if moduleName, ok := DrupalModuleName(packageName); ok && !IsCorePackage(moduleName) {
+		return c.FetchReleases(moduleName)
+	}
+	return c.FetchPackagistReleases(packageName)
+}
+
+// =============================================================================
+// Drupal.org Release API
+// =============================================================================
+
+// FetchReleases fetches the latest release per supported branch for a Drupal module.
 func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
 	url := fmt.Sprintf("%s/%s/current", c.BaseURL, moduleName)
 
@@ -212,7 +274,89 @@ func (c *Client) FetchReleases(moduleName string) ([]Release, error) {
 }
 
 // =============================================================================
-// Branch Filtering
+// Packagist Release API
+// =============================================================================
+
+// FetchPackagistReleases fetches the latest stable release per major version
+// from the Packagist p2 API.
+func (c *Client) FetchPackagistReleases(packageName string) ([]Release, error) {
+	url := fmt.Sprintf("%s/p2/%s.json", c.PackagistBaseURL, packageName)
+
+	resp, err := c.HTTPClient.Get(url)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var result PackagistResponse
+	if err := json.Unmarshal(body, &result); err != nil {
+		return nil, err
+	}
+
+	versions := result.Packages[packageName]
+	return LatestStablePerMajor(packageName, versions), nil
+}
+
+// =============================================================================
+// Packagist Version Filtering
+// =============================================================================
+
+// IsStableVersion returns true if the Packagist version is a stable release
+// (not dev, alpha, beta, or RC).
+func IsStableVersion(v PackagistVersion) bool {
+	lower := strings.ToLower(v.Version)
+	for _, tag := range []string{"dev", "alpha", "beta", "rc"} {
+		if strings.Contains(lower, tag) {
+			return false
+		}
+	}
+	return true
+}
+
+// MajorVersion extracts the major version number from a normalized version string
+// (e.g. "13.0.1.0" -> "13").
+func MajorVersion(versionNormalized string) string {
+	parts := strings.SplitN(versionNormalized, ".", 2)
+	if len(parts) > 0 {
+		return parts[0]
+	}
+	return ""
+}
+
+// LatestStablePerMajor filters Packagist versions to the latest stable release
+// per major version. Versions are assumed to be ordered newest-first.
+func LatestStablePerMajor(packageName string, versions []PackagistVersion) []Release {
+	seen := make(map[string]bool)
+	var result []Release
+	for _, v := range versions {
+		if !IsStableVersion(v) {
+			continue
+		}
+		major := MajorVersion(v.VersionNormalized)
+		if seen[major] {
+			continue
+		}
+		seen[major] = true
+		version := strings.TrimPrefix(v.Version, "v")
+		result = append(result, Release{
+			Name:    packageName + " " + version,
+			Version: version,
+		})
+	}
+	return result
+}
+
+// =============================================================================
+// Drupal Branch Filtering
 // =============================================================================
 
 // ParseSupportedBranches splits a comma-separated branches string.

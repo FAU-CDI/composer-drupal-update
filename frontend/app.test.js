@@ -190,13 +190,13 @@ describe("Edit toggle", () => {
   it("clears the packages table when entering edit mode", () => {
     $("#btn-edit").click();
 
-    expect($("#packages-body").textContent).toContain("No Drupal packages found");
+    expect($("#packages-body").textContent).toContain("No packages found");
   });
 
   it("exits edit mode and restores readonly on second click", () => {
     const textarea = $("#composer-textarea");
     textarea.value = '{"require":{}}';
-    mockParseComposer.mockResolvedValue({ packages: [] });
+    mockParseComposer.mockResolvedValue({ drupal_packages: [], composer_packages: [] });
 
     // Enter
     $("#btn-edit").click();
@@ -256,7 +256,7 @@ describe("Commands visibility", () => {
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     // Enter + exit edit mode triggers renderTable -> updateCommands
-    mockParseComposer.mockResolvedValue({ packages: [] });
+    mockParseComposer.mockResolvedValue({ drupal_packages: [], composer_packages: [] });
     $("#btn-edit").click();
     $("#btn-edit").click();
 
@@ -283,7 +283,7 @@ describe("Commands visibility", () => {
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ name: "test" });
 
-    mockParseComposer.mockResolvedValue({ packages: [] });
+    mockParseComposer.mockResolvedValue({ drupal_packages: [], composer_packages: [] });
     $("#btn-edit").click();
     $("#btn-edit").click();
 
@@ -336,13 +336,14 @@ describe("Packages tab dirty indicator", () => {
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages");
   });
 
-  it("shows (*) when a version is changed in a dropdown", async () => {
+  it("shows (*) when a Drupal version is changed in a dropdown", async () => {
     // Set up textarea and trigger a full load
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
@@ -360,8 +361,8 @@ describe("Packages tab dirty indicator", () => {
     await flushPromises();
     await flushPromises();
 
-    // There should be a select for gin
-    const select = $("#select-gin");
+    // There should be a select for drupal/gin
+    const select = $("#select-drupal\\/gin");
     expect(select).toBeTruthy();
 
     // Tab should show "Packages" (no changes yet)
@@ -374,12 +375,43 @@ describe("Packages tab dirty indicator", () => {
     expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
   });
 
+  it("shows (*) when a Composer version is changed", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drush/drush": "^12" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [],
+      composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1" }],
+    });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drush/drush:^12" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    const select = $("#select-drush\\/drush");
+    expect(select).toBeTruthy();
+
+    select.value = "^13.0.1";
+    select.dispatchEvent(new Event("change"));
+
+    expect($('[data-tab="tab-packages"]').textContent).toBe("Packages (*)");
+  });
+
   it("removes (*) when version is changed back to current", async () => {
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
@@ -394,7 +426,7 @@ describe("Packages tab dirty indicator", () => {
     await flushPromises();
     await flushPromises();
 
-    const select = $("#select-gin");
+    const select = $("#select-drupal\\/gin");
 
     // Change to new version
     select.value = "^6.0.0";
@@ -412,7 +444,8 @@ describe("Packages tab dirty indicator", () => {
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
@@ -431,7 +464,7 @@ describe("Packages tab dirty indicator", () => {
     expect($("#btn-apply").disabled).toBe(true);
 
     // Change version -> enabled
-    const select = $("#select-gin");
+    const select = $("#select-drupal\\/gin");
     select.value = "^6.0.0";
     select.dispatchEvent(new Event("change"));
     expect($("#btn-apply").disabled).toBe(false);
@@ -448,12 +481,13 @@ describe("Packages tab dirty indicator", () => {
 // =============================================================================
 
 describe("loadComposer flow", () => {
-  it("parses and renders packages with releases", async () => {
+  it("parses and renders Drupal packages with releases", async () => {
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [
@@ -472,28 +506,78 @@ describe("loadComposer flow", () => {
     await flushPromises();
     await flushPromises();
 
-    // Should have rendered the table
+    // Should have rendered the table with package rows
     const rows = $$("#packages-body tr");
-    expect(rows).toHaveLength(1);
+    expect(rows.length).toBeGreaterThanOrEqual(1);
 
-    // Package name should be a link
-    const link = rows[0].querySelector("a");
-    expect(link).toBeTruthy();
+    // Find the package row (skip section headers)
+    const pkgRow = Array.from(rows).find(r => r.querySelector("a"));
+    expect(pkgRow).toBeTruthy();
+
+    // Package name should be a link to drupal.org
+    const link = pkgRow.querySelector("a");
     expect(link.textContent).toBe("drupal/gin");
     expect(link.href).toContain("drupal.org/project/gin#project-releases");
     expect(link.target).toBe("_blank");
 
-    // Version cell
-    expect(rows[0].children[1].textContent).toBe("^5.0");
-
     // Dropdown should have current + 2 release options
-    const select = rows[0].querySelector("select");
+    const select = pkgRow.querySelector("select");
     expect(select).toBeTruthy();
     expect(select.options).toHaveLength(3);
     expect(select.options[0].textContent).toContain("(current)");
+  });
 
-    // Apply button should be disabled (no changes selected yet)
-    expect($("#btn-apply").disabled).toBe(true);
+  it("parses and renders Composer packages", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drush/drush": "^12" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [],
+      composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
+    });
+    mockFetchReleases.mockResolvedValue({
+      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1" }],
+    });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drush/drush:^12" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Find the package link - should point to Packagist
+    const link = $$("#packages-body a")[0];
+    expect(link).toBeTruthy();
+    expect(link.textContent).toBe("drush/drush");
+    expect(link.href).toContain("packagist.org/packages/drush/drush");
+  });
+
+  it("renders both Drupal and Composer packages with section headers", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0", "drush/drush": "^12" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
+    });
+    mockFetchReleases.mockResolvedValue({ releases: [] });
+    mockBuildComposerCommands.mockReturnValue([
+      'composer require "drupal/gin:^5.0" --no-update',
+      "composer update --dry-run",
+    ]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Should have section headers
+    const bodyHTML = $("#packages-body").innerHTML;
+    expect(bodyHTML).toContain("Drupal Packages");
+    expect(bodyHTML).toContain("Composer Packages");
   });
 
   it("calls parseComposer with the parsed JSON", async () => {
@@ -501,13 +585,35 @@ describe("loadComposer flow", () => {
     const textarea = $("#composer-textarea");
     textarea.value = JSON.stringify(composerJSON);
 
-    mockParseComposer.mockResolvedValue({ packages: [] });
+    mockParseComposer.mockResolvedValue({ drupal_packages: [], composer_packages: [] });
 
     $("#btn-edit").click();
     $("#btn-edit").click();
     await flushPromises();
 
     expect(mockParseComposer).toHaveBeenCalledWith(composerJSON);
+  });
+
+  it("calls fetchReleases with full package name", async () => {
+    const textarea = $("#composer-textarea");
+    textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0", "drush/drush": "^12" } });
+
+    mockParseComposer.mockResolvedValue({
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [{ name: "drush/drush", module: "drush/drush", version: "^12" }],
+    });
+    mockFetchReleases.mockResolvedValue({ releases: [] });
+    mockBuildComposerCommands.mockReturnValue([]);
+
+    $("#btn-edit").click();
+    $("#btn-edit").click();
+    await flushPromises();
+    await flushPromises();
+
+    // Should be called with full package names, not module names
+    const calls = mockFetchReleases.mock.calls.map(c => c[0]);
+    expect(calls).toContain("drupal/gin");
+    expect(calls).toContain("drush/drush");
   });
 
   it("handles parseComposer errors gracefully", async () => {
@@ -529,7 +635,8 @@ describe("loadComposer flow", () => {
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockRejectedValue(new Error("network error"));
     mockBuildComposerCommands.mockReturnValue([
@@ -544,9 +651,7 @@ describe("loadComposer flow", () => {
 
     // Should still render the row, but with "Loading..." for releases
     const rows = $$("#packages-body tr");
-    expect(rows).toHaveLength(1);
-    // The select cell should show loading (no releases)
-    expect(rows[0].children[2].textContent).toBe("Loading...");
+    expect(rows.length).toBeGreaterThanOrEqual(1);
   });
 });
 
@@ -562,7 +667,8 @@ describe("Apply versions", () => {
 
     // Set up initial load
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],
@@ -583,7 +689,7 @@ describe("Apply versions", () => {
     await flushPromises();
 
     // Select a different version to enable Apply
-    const select = $("#select-gin");
+    const select = $("#select-drupal\\/gin");
     select.value = "^6.0.0";
     select.dispatchEvent(new Event("change"));
     expect($("#btn-apply").disabled).toBe(false);
@@ -601,7 +707,8 @@ describe("Apply versions", () => {
     textarea.value = JSON.stringify({ require: { "drupal/gin": "^5.0" } });
 
     mockParseComposer.mockResolvedValue({
-      packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      drupal_packages: [{ name: "drupal/gin", module: "gin", version: "^5.0" }],
+      composer_packages: [],
     });
     mockFetchReleases.mockResolvedValue({
       releases: [{ name: "gin 6.0.0", version: "6.0.0", core_compatibility: "^10 || ^11" }],

@@ -25,28 +25,51 @@ func main() {
 
 	client := drupalupdate.NewClient()
 	reader := bufio.NewReader(os.Stdin)
-
 	changed := false
-	for packageName, currentVersion := range composer.Require {
-		moduleName, ok := drupalupdate.DrupalModuleName(packageName)
-		if !ok || drupalupdate.IsCorePackage(moduleName) {
-			continue
-		}
 
-		releases, err := client.FetchReleases(moduleName)
-		if err != nil {
-			fmt.Printf("  [%s] Could not fetch releases: %v\n", packageName, err)
-			continue
-		}
-		if len(releases) == 0 {
-			fmt.Printf("  [%s] No releases found\n", packageName)
-			continue
-		}
+	// Process Drupal packages
+	drupalPkgs := drupalupdate.DrupalPackages(composer)
+	if len(drupalPkgs) > 0 {
+		fmt.Println("\n=== Drupal Packages ===")
+		for _, pkg := range drupalPkgs {
+			releases, err := client.FetchReleases(pkg.Module)
+			if err != nil {
+				fmt.Printf("  [%s] Could not fetch releases: %v\n", pkg.Name, err)
+				continue
+			}
+			if len(releases) == 0 {
+				fmt.Printf("  [%s] No releases found\n", pkg.Name)
+				continue
+			}
 
-		newVersion := selectVersion(reader, packageName, currentVersion, releases)
-		if newVersion != "" && newVersion != currentVersion {
-			composer.Require[packageName] = newVersion
-			changed = true
+			newVersion := selectVersion(reader, pkg.Name, pkg.Version, releases)
+			if newVersion != "" && newVersion != pkg.Version {
+				composer.Require[pkg.Name] = newVersion
+				changed = true
+			}
+		}
+	}
+
+	// Process Composer (non-Drupal) packages
+	composerPkgs := drupalupdate.ComposerPackages(composer)
+	if len(composerPkgs) > 0 {
+		fmt.Println("\n=== Composer Packages ===")
+		for _, pkg := range composerPkgs {
+			releases, err := client.FetchPackagistReleases(pkg.Name)
+			if err != nil {
+				fmt.Printf("  [%s] Could not fetch releases: %v\n", pkg.Name, err)
+				continue
+			}
+			if len(releases) == 0 {
+				fmt.Printf("  [%s] No releases found\n", pkg.Name)
+				continue
+			}
+
+			newVersion := selectVersion(reader, pkg.Name, pkg.Version, releases)
+			if newVersion != "" && newVersion != pkg.Version {
+				composer.Require[pkg.Name] = newVersion
+				changed = true
+			}
 		}
 	}
 
@@ -67,10 +90,11 @@ func selectVersion(reader *bufio.Reader, packageName, currentVersion string, rel
 
 	for i, r := range releases {
 		coreCompat := r.CoreCompatibility
-		if coreCompat == "" {
-			coreCompat = "unknown"
+		if coreCompat != "" {
+			fmt.Printf("  [%d] %-20s (core: %s)\n", i+1, r.Version, coreCompat)
+		} else {
+			fmt.Printf("  [%d] %s\n", i+1, r.Version)
 		}
-		fmt.Printf("  [%d] %-20s (core: %s)\n", i+1, r.Version, coreCompat)
 	}
 	fmt.Println("  [s] Skip (keep current version)")
 	fmt.Println()

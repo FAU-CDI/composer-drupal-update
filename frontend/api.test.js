@@ -72,16 +72,21 @@ describe("getJSON", () => {
 describe("parseComposer", () => {
   it("calls /api/parse with the composer_json", async () => {
     const mockResponse = {
-      packages: [
+      drupal_packages: [
         { name: "drupal/gin", module: "gin", version: "^5.0" },
+      ],
+      composer_packages: [
+        { name: "drush/drush", module: "drush/drush", version: "^13" },
       ],
     };
     global.fetch = mockFetch(200, mockResponse);
 
-    const data = await parseComposer({ require: { "drupal/gin": "^5.0" } });
+    const data = await parseComposer({ require: { "drupal/gin": "^5.0", "drush/drush": "^13" } });
 
-    expect(data.packages).toHaveLength(1);
-    expect(data.packages[0].module).toBe("gin");
+    expect(data.drupal_packages).toHaveLength(1);
+    expect(data.drupal_packages[0].module).toBe("gin");
+    expect(data.composer_packages).toHaveLength(1);
+    expect(data.composer_packages[0].name).toBe("drush/drush");
 
     // Verify the request was sent to the right URL
     const [url] = global.fetch.mock.calls[0];
@@ -94,31 +99,35 @@ describe("parseComposer", () => {
 // =============================================================================
 
 describe("fetchReleases", () => {
-  it("calls /api/releases with the module name", async () => {
+  it("calls /api/releases with the full package name", async () => {
     const mockResponse = {
-      module: "gin",
+      package: "drupal/gin",
       releases: [
         { name: "gin 5.0.3", version: "5.0.3", core_compatibility: "^10 || ^11" },
       ],
     };
     global.fetch = mockFetch(200, mockResponse);
 
-    const data = await fetchReleases("gin");
+    const data = await fetchReleases("drupal/gin");
 
-    expect(data.module).toBe("gin");
+    expect(data.package).toBe("drupal/gin");
     expect(data.releases).toHaveLength(1);
 
     const [url] = global.fetch.mock.calls[0];
-    expect(url).toBe("/api/releases?module=gin");
+    expect(url).toBe("/api/releases?package=drupal%2Fgin");
   });
 
-  it("encodes special characters in the module name", async () => {
-    global.fetch = mockFetch(200, { module: "foo_bar", releases: [] });
+  it("works for non-Drupal packages", async () => {
+    global.fetch = mockFetch(200, {
+      package: "drush/drush",
+      releases: [{ name: "drush/drush 13.0.1", version: "13.0.1" }],
+    });
 
-    await fetchReleases("foo_bar");
+    const data = await fetchReleases("drush/drush");
 
+    expect(data.package).toBe("drush/drush");
     const [url] = global.fetch.mock.calls[0];
-    expect(url).toBe("/api/releases?module=foo_bar");
+    expect(url).toBe("/api/releases?package=drush%2Fdrush");
   });
 });
 
@@ -129,21 +138,22 @@ describe("fetchReleases", () => {
 describe("updateComposer", () => {
   it("calls /api/update with composer_json and versions", async () => {
     const mockResponse = {
-      composer_json: { require: { "drupal/gin": "^6.0" } },
+      composer_json: { require: { "drupal/gin": "^6.0", "drush/drush": "^13" } },
     };
     global.fetch = mockFetch(200, mockResponse);
 
     const data = await updateComposer(
-      { require: { "drupal/gin": "^5.0" } },
-      { "drupal/gin": "^6.0" },
+      { require: { "drupal/gin": "^5.0", "drush/drush": "^12" } },
+      { "drupal/gin": "^6.0", "drush/drush": "^13" },
     );
 
     expect(data.composer_json.require["drupal/gin"]).toBe("^6.0");
+    expect(data.composer_json.require["drush/drush"]).toBe("^13");
 
     const [url, opts] = global.fetch.mock.calls[0];
     expect(url).toBe("/api/update");
     const body = JSON.parse(opts.body);
-    expect(body.versions).toEqual({ "drupal/gin": "^6.0" });
+    expect(body.versions).toEqual({ "drupal/gin": "^6.0", "drush/drush": "^13" });
   });
 });
 
@@ -156,14 +166,14 @@ describe("buildVersionMap", () => {
     const packages = [
       { name: "drupal/gin", version: "^5.0", selectedVersion: "^6.0" },
       { name: "drupal/admin_toolbar", version: "^3.6", selectedVersion: "^3.6" },
-      { name: "drupal/book", version: "^2.0", selectedVersion: "^3.0" },
+      { name: "drush/drush", version: "^12", selectedVersion: "^13" },
     ];
 
     const result = buildVersionMap(packages);
 
     expect(result).toEqual({
       "drupal/gin": "^6.0",
-      "drupal/book": "^3.0",
+      "drush/drush": "^13",
     });
   });
 
@@ -196,14 +206,14 @@ describe("buildComposerCommands", () => {
   it("generates require commands followed by update --dry-run", () => {
     const versions = {
       "drupal/gin": "^6.0",
-      "drupal/admin_toolbar": "^4.0",
+      "drush/drush": "^13",
     };
 
     const commands = buildComposerCommands(versions);
 
     expect(commands).toHaveLength(3);
     expect(commands[0]).toBe('composer require "drupal/gin:^6.0" --no-update');
-    expect(commands[1]).toBe('composer require "drupal/admin_toolbar:^4.0" --no-update');
+    expect(commands[1]).toBe('composer require "drush/drush:^13" --no-update');
     expect(commands[2]).toBe("composer update --dry-run");
   });
 

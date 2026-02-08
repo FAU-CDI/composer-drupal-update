@@ -1,8 +1,8 @@
 openapi: "3.0.3"
 info:
   title: Composer Drupal Update API
-  description: API for parsing composer.json files, fetching Drupal module releases, and updating version constraints.
-  version: "1.0.0"
+  description: API for parsing composer.json files, fetching Drupal and Packagist releases, and updating version constraints.
+  version: "2.0.0"
 
 servers:
   - url: /
@@ -11,7 +11,10 @@ paths:
   /api/parse:
     post:
       summary: Parse composer.json
-      description: Accepts a composer.json and returns all updatable Drupal packages with their current version constraints.
+      description: >
+        Accepts a composer.json and returns all updatable packages, split into
+        Drupal packages (drupal/*) and Composer packages (everything else).
+        Core packages (drupal/core-*), PHP, and extensions are excluded.
       requestBody:
         required: true
         content:
@@ -20,7 +23,7 @@ paths:
               $ref: "#/components/schemas/ParseRequest"
       responses:
         "200":
-          description: List of Drupal packages found in the composer.json.
+          description: Categorized list of packages found in the composer.json.
           content:
             application/json:
               schema:
@@ -34,30 +37,35 @@ paths:
 
   /api/releases:
     get:
-      summary: Get releases for a module
-      description: Returns the latest release for each supported branch of a Drupal module, including core compatibility.
+      summary: Get releases for a package
+      description: >
+        Returns available releases for a composer package.
+        For drupal/* packages, queries the drupal.org release-history API and
+        returns the latest release per supported branch.
+        For all other packages, queries the Packagist p2 API and returns the
+        latest stable release per major version.
       parameters:
-        - name: module
+        - name: package
           in: query
           required: true
-          description: Drupal module machine name (e.g. "admin_toolbar").
+          description: Full composer package name (e.g. "drupal/admin_toolbar" or "drush/drush").
           schema:
             type: string
       responses:
         "200":
-          description: Available releases for the module.
+          description: Available releases for the package.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReleasesResponse"
         "400":
-          description: Missing module parameter.
+          description: Missing package parameter.
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "502":
-          description: Failed to fetch releases from drupal.org.
+          description: Failed to fetch releases from upstream API.
           content:
             application/json:
               schema:
@@ -101,8 +109,14 @@ components:
     ParseResponse:
       type: object
       properties:
-        packages:
+        drupal_packages:
           type: array
+          description: Drupal modules (drupal/*) available for updating.
+          items:
+            $ref: "#/components/schemas/Package"
+        composer_packages:
+          type: array
+          description: Non-Drupal Composer packages available for updating.
           items:
             $ref: "#/components/schemas/Package"
 
@@ -115,7 +129,7 @@ components:
           example: drupal/gin
         module:
           type: string
-          description: Drupal module machine name.
+          description: Identifier used for fetching releases (Drupal module name or full package name).
           example: gin
         version:
           type: string
@@ -125,10 +139,10 @@ components:
     ReleasesResponse:
       type: object
       properties:
-        module:
+        package:
           type: string
-          description: The queried module name.
-          example: admin_toolbar
+          description: The queried package name.
+          example: drupal/admin_toolbar
         releases:
           type: array
           items:
@@ -147,7 +161,7 @@ components:
           example: "4.0.2"
         core_compatibility:
           type: string
-          description: Drupal core version compatibility.
+          description: Drupal core version compatibility (only present for Drupal packages).
           example: "^10.3 || ^11"
 
     UpdateRequest:
@@ -166,7 +180,7 @@ components:
             type: string
           example:
             drupal/gin: "^6.0"
-            drupal/admin_toolbar: "^4.0"
+            drush/drush: "^13"
 
     UpdateResponse:
       type: object

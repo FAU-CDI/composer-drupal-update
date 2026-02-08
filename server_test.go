@@ -10,7 +10,7 @@ import (
 	drupalupdate "github.com/FAU-CDI/composer-drupal-update"
 )
 
-// newTestServer creates a Server backed by a mock drupal.org that serves sampleXML.
+// newTestServer creates a Server backed by mock drupal.org and Packagist servers.
 func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 	t.Helper()
 
@@ -23,10 +23,22 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 		http.NotFound(w, r)
 	}))
 
-	client := drupalupdate.NewClientWithHTTP(drupalMock.URL, drupalMock.Client())
+	packagistMock := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/p2/drush/drush.json" {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(samplePackagistJSON))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+
+	client := drupalupdate.NewClientWithHTTP(drupalMock.URL, packagistMock.URL, &http.Client{})
 	server := drupalupdate.NewServer(client)
 
-	return server, drupalMock.Close
+	return server, func() {
+		drupalMock.Close()
+		packagistMock.Close()
+	}
 }
 
 // =============================================================================
@@ -43,7 +55,8 @@ func TestServer_Parse(t *testing.T) {
 				"drupal/admin_toolbar": "^3.6",
 				"drupal/gin": "^5.0",
 				"drupal/core-recommended": "^11",
-				"drush/drush": "^13"
+				"drush/drush": "^13",
+				"php": ">=8.2"
 			}
 		}
 	}`
@@ -62,20 +75,30 @@ func TestServer_Parse(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Should return admin_toolbar and gin (skip core-recommended and drush)
-	if len(resp.Packages) != 2 {
-		t.Fatalf("expected 2 packages, got %d", len(resp.Packages))
+	// Should return admin_toolbar and gin as Drupal packages
+	if len(resp.DrupalPackages) != 2 {
+		t.Fatalf("expected 2 drupal packages, got %d", len(resp.DrupalPackages))
+	}
+	// Sorted: admin_toolbar first, gin second
+	if resp.DrupalPackages[0].Module != "admin_toolbar" {
+		t.Errorf("expected admin_toolbar, got %s", resp.DrupalPackages[0].Module)
+	}
+	if resp.DrupalPackages[1].Module != "gin" {
+		t.Errorf("expected gin, got %s", resp.DrupalPackages[1].Module)
+	}
+	if resp.DrupalPackages[0].Version != "^3.6" {
+		t.Errorf("expected ^3.6, got %s", resp.DrupalPackages[0].Version)
 	}
 
-	// Sorted: admin_toolbar first, gin second
-	if resp.Packages[0].Module != "admin_toolbar" {
-		t.Errorf("expected admin_toolbar, got %s", resp.Packages[0].Module)
+	// Should return drush as a Composer package (skip php and core-recommended)
+	if len(resp.ComposerPackages) != 1 {
+		t.Fatalf("expected 1 composer package, got %d", len(resp.ComposerPackages))
 	}
-	if resp.Packages[1].Module != "gin" {
-		t.Errorf("expected gin, got %s", resp.Packages[1].Module)
+	if resp.ComposerPackages[0].Name != "drush/drush" {
+		t.Errorf("expected drush/drush, got %s", resp.ComposerPackages[0].Name)
 	}
-	if resp.Packages[0].Version != "^3.6" {
-		t.Errorf("expected ^3.6, got %s", resp.Packages[0].Version)
+	if resp.ComposerPackages[0].Version != "^13" {
+		t.Errorf("expected ^13, got %s", resp.ComposerPackages[0].Version)
 	}
 }
 
@@ -110,12 +133,12 @@ func TestServer_Parse_InvalidComposerJSON(t *testing.T) {
 // GET /api/releases
 // =============================================================================
 
-func TestServer_Releases(t *testing.T) {
+func TestServer_Releases_Drupal(t *testing.T) {
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?module=admin_toolbar", nil)
+	r := httptest.NewRequest("GET", "/api/releases?package=drupal/admin_toolbar", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusOK {
@@ -127,8 +150,8 @@ func TestServer_Releases(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if resp.Module != "admin_toolbar" {
-		t.Errorf("expected module admin_toolbar, got %s", resp.Module)
+	if resp.Package != "drupal/admin_toolbar" {
+		t.Errorf("expected package drupal/admin_toolbar, got %s", resp.Package)
 	}
 	if len(resp.Releases) != 2 {
 		t.Fatalf("expected 2 releases (one per branch), got %d", len(resp.Releases))
@@ -144,7 +167,35 @@ func TestServer_Releases(t *testing.T) {
 	}
 }
 
-func TestServer_Releases_MissingModule(t *testing.T) {
+func TestServer_Releases_Packagist(t *testing.T) {
+	server, cleanup := newTestServer(t)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/api/releases?package=drush/drush", nil)
+	server.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp drupalupdate.ReleasesResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+
+	if resp.Package != "drush/drush" {
+		t.Errorf("expected package drush/drush, got %s", resp.Package)
+	}
+	if len(resp.Releases) != 3 {
+		t.Fatalf("expected 3 releases, got %d", len(resp.Releases))
+	}
+	if resp.Releases[0].Version != "13.0.1" {
+		t.Errorf("expected 13.0.1, got %s", resp.Releases[0].Version)
+	}
+}
+
+func TestServer_Releases_MissingPackage(t *testing.T) {
 	server, cleanup := newTestServer(t)
 	defer cleanup()
 
@@ -162,7 +213,7 @@ func TestServer_Releases_NotFound(t *testing.T) {
 	defer cleanup()
 
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/api/releases?module=nonexistent", nil)
+	r := httptest.NewRequest("GET", "/api/releases?package=drupal/nonexistent", nil)
 	server.ServeHTTP(w, r)
 
 	if w.Code != http.StatusBadGateway {
@@ -183,12 +234,14 @@ func TestServer_Update(t *testing.T) {
 			"name": "my/project",
 			"require": {
 				"drupal/admin_toolbar": "^3.6",
-				"drupal/gin": "^5.0"
+				"drupal/gin": "^5.0",
+				"drush/drush": "^12"
 			},
 			"extra": {"key": "value"}
 		},
 		"versions": {
-			"drupal/admin_toolbar": "^4.0"
+			"drupal/admin_toolbar": "^4.0",
+			"drush/drush": "^13"
 		}
 	}`
 
@@ -214,6 +267,9 @@ func TestServer_Update(t *testing.T) {
 
 	if result.Require["drupal/admin_toolbar"] != "^4.0" {
 		t.Errorf("expected ^4.0, got %s", result.Require["drupal/admin_toolbar"])
+	}
+	if result.Require["drush/drush"] != "^13" {
+		t.Errorf("expected ^13, got %s", result.Require["drush/drush"])
 	}
 	// gin should remain unchanged
 	if result.Require["drupal/gin"] != "^5.0" {

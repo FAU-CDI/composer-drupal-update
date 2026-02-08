@@ -16,12 +16,13 @@ type ParseRequest struct {
 
 // ParseResponse is the response body for POST /api/parse.
 type ParseResponse struct {
-	Packages []Package `json:"packages"`
+	DrupalPackages   []Package `json:"drupal_packages"`
+	ComposerPackages []Package `json:"composer_packages"`
 }
 
-// ReleasesResponse is the response body for GET /api/releases?module=...
+// ReleasesResponse is the response body for GET /api/releases?package=...
 type ReleasesResponse struct {
-	Module   string    `json:"module"`
+	Package  string    `json:"package"`
 	Releases []Release `json:"releases"`
 }
 
@@ -70,7 +71,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // Handlers
 // =============================================================================
 
-// handleParse accepts a composer.json and returns the list of drupal packages.
+// handleParse accepts a composer.json and returns all updatable packages,
+// split into Drupal and Composer (non-Drupal) categories.
 func (s *Server) handleParse(w http.ResponseWriter, r *http.Request) {
 	var req ParseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -84,24 +86,28 @@ func (s *Server) handleParse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ParseResponse{Packages: DrupalPackages(composer)})
+	writeJSON(w, http.StatusOK, ParseResponse{
+		DrupalPackages:   DrupalPackages(composer),
+		ComposerPackages: ComposerPackages(composer),
+	})
 }
 
-// handleReleases returns available releases for a given drupal module.
+// handleReleases returns available releases for a given composer package.
+// For drupal/* packages it queries drupal.org; for others it queries Packagist.
 func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
-	module := r.URL.Query().Get("module")
-	if module == "" {
-		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "missing 'module' query parameter"})
+	pkg := r.URL.Query().Get("package")
+	if pkg == "" {
+		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "missing 'package' query parameter"})
 		return
 	}
 
-	releases, err := s.Client.FetchReleases(module)
+	releases, err := s.Client.FetchReleasesForPackage(pkg)
 	if err != nil {
 		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "failed to fetch releases: " + err.Error()})
 		return
 	}
 
-	writeJSON(w, http.StatusOK, ReleasesResponse{Module: module, Releases: releases})
+	writeJSON(w, http.StatusOK, ReleasesResponse{Package: pkg, Releases: releases})
 }
 
 // handleUpdate accepts a composer.json and a version map, and returns the updated composer.json.
