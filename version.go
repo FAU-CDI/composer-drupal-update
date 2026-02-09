@@ -1,60 +1,68 @@
 package drupalupdate
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
 )
 
 // Version holds parsed segments of a version string (e.g. from drupal.org or Packagist).
 type Version struct {
-	Prefix    string // e.g. "8.x" or ""
+	Prefix    string // e.g. "8.x", "12.x", ... or ""
 	Stability string // "", "RC", "beta", "alpha"
 
-	// Regular version segments.
-	// <0 indicates missing semgent.
+	// Regular version segments, -1 indicates missing segment.
 	Major, Minor, Patch int
 }
+
+var (
+	versionRegex      = regexp.MustCompile(`^((\d+\.x)-)?((\d+)(\.\d+){0,2})(-([aA-zZ]+).*)?$`) // regular expression used to parse a version
+	stabilityPrefixes = []string{"RC", "beta", "alpha"}                                         // version strings
+)
 
 // ParseVersion parses a raw version string into a Version.
 // Handles optional "8.x-" prefix and stability suffixes (-rc*, -beta*, -alpha*).
 // Numeric parts are parsed segment by segment; non-numeric segments are treated as 0.
 func ParseVersion(s string) (v Version) {
-	rest := s
+	// default all the versions to -1
+	v.Major, v.Minor, v.Patch = -1, -1, -1
 
-	// Prefix
-	if strings.HasPrefix(rest, "8.x-") {
-		v.Prefix = "8.x"
-		rest = strings.TrimPrefix(rest, "8.x-")
-	}
-
-	// Stability suffix (strip and set)
-	lower := strings.ToLower(rest)
-	if idx := strings.Index(lower, "-rc"); idx != -1 {
-		rest = rest[:idx]
-		v.Stability = "RC"
-	} else if idx := strings.Index(lower, "-beta"); idx != -1 {
-		rest = rest[:idx]
-		v.Stability = "beta"
-	} else if idx := strings.Index(lower, "-alpha"); idx != -1 {
-		rest = rest[:idx]
-		v.Stability = "alpha"
+	matches := versionRegex.FindAllStringSubmatch(s, 1)
+	if len(matches) == 0 {
+		return v
 	}
 
-	// Major, minor, patch (-1 means not present)
-	v.Major = -1
-	v.Minor = -1
-	v.Patch = -1
-	parts := strings.SplitN(rest, ".", 4)
-	if len(parts) >= 1 {
-		v.Major = parseLeadingInt(parts[0])
+	match := matches[0]
+	if len(match) != 8 {
+		panic("never reached: match must have length 8")
 	}
-	if len(parts) >= 2 {
-		v.Minor = parseLeadingInt(parts[1])
+
+	v.Prefix = match[2]
+
+	digits := strings.SplitN(match[3], ".", 3)
+	if len(digits) > 0 {
+		v.Major = parseLeadingInt(digits[0])
 	}
-	if len(parts) >= 3 {
-		v.Patch = parseLeadingInt(parts[2])
+	if len(digits) > 1 {
+		v.Minor = parseLeadingInt(digits[1])
 	}
+	if len(digits) > 2 {
+		v.Patch = parseLeadingInt(digits[2])
+	}
+
+	v.Stability = parseStability(match[7])
+
 	return v
+}
+
+func parseStability(s string) string {
+	for _, prefix := range stabilityPrefixes {
+		if !strings.EqualFold(s, prefix) {
+			continue
+		}
+		return prefix
+	}
+	return ""
 }
 
 // VersionPin returns the composer version constraint for this version.
@@ -98,6 +106,7 @@ func seg(n int) int {
 }
 
 // parseLeadingInt parses the leading integer from a string like "3" or "3-rc1".
+// Returns the fallback value if no integer is found.
 func parseLeadingInt(s string) int {
 	n := 0
 	for _, ch := range s {

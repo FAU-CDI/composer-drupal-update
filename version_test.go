@@ -23,6 +23,7 @@ func TestParseVersion(t *testing.T) {
 		{"3.0.0-rc21", "", 3, 0, 0, "RC"},
 		{"2.0.0-beta3", "", 2, 0, 0, "beta"},
 		{"1.0.0-alpha1", "", 1, 0, 0, "alpha"},
+		{"12.x-1.0.3-beta5", "12.x", 1, 0, 3, "beta"},
 		{"42", "", 42, -1, -1, ""},
 	}
 	for _, tt := range tests {
