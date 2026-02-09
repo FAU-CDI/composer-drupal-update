@@ -1,5 +1,7 @@
+//spellchecker:words drupalupdate
 package drupalupdate_test
 
+//spellchecker:words testing github composer drupal update drupalupdate
 import (
 	"testing"
 

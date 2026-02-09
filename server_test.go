@@ -1,5 +1,7 @@
+//spellchecker:words drupalupdate
 package drupalupdate_test
 
+//spellchecker:words bytes encoding json http httptest testing github composer drupal update drupalupdate
 import (
 	"bytes"
 	"encoding/json"
@@ -352,13 +354,9 @@ func TestServer_Update(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp drupalupdate.UpdateResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-
 	// Parse the returned composer.json to verify changes
-	result, err := drupalupdate.ParseComposerJSON(resp.ComposerJSON)
+	var result drupalupdate.ComposerJSON
+	err := json.Unmarshal(w.Body.Bytes(), &result)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,14 +373,10 @@ func TestServer_Update(t *testing.T) {
 	}
 
 	// Verify extra fields are preserved
-	var raw map[string]any
-	if err := json.Unmarshal(resp.ComposerJSON, &raw); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := raw["extra"]; !ok {
+	if _, ok := result.Raw["extra"]; !ok {
 		t.Error("extra field was lost")
 	}
-	if _, ok := raw["name"]; !ok {
+	if _, ok := result.Raw["name"]; !ok {
 		t.Error("name field was lost")
 	}
 }
@@ -425,12 +419,8 @@ func TestServer_Update_IgnoresUnknownPackages(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
 
-	var resp drupalupdate.UpdateResponse
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := drupalupdate.ParseComposerJSON(resp.ComposerJSON)
+	var result drupalupdate.ComposerJSON
+	err := json.Unmarshal(w.Body.Bytes(), &result)
 	if err != nil {
 		t.Fatal(err)
 	}

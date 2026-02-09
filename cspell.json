@@ -1,0 +1,37 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "colspan",
+    "compat",
+    "cweagans",
+    "drupalupdate",
+    "drush",
+    "dryrun",
+    "errcheck",
+    "Fdrush",
+    "Fgin",
+    "golangci",
+    "gosec",
+    "govet",
+    "Hocevar",
+    "mbstring",
+    "nolint",
+    "noopener",
+    "noreferrer",
+    "openapi",
+    "packagist",
+    "paralleltest",
+    "pkgs",
+    "skippable",
+    "staticcheck",
+    "tparallel",
+    "typecheck",
+    "usestdlibvars",
+    "wrapcheck",
+  ],
+  "ignorePaths": [
+    "go.mod",
+    "go.sum"
+  ]
+}

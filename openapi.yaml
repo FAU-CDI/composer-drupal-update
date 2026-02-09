@@ -193,11 +193,9 @@ components:
             drush/drush: "^13"
 
     UpdateResponse:
+      description: The updated composer.json file, returned directly as a JSON object.
       type: object
-      properties:
-        composer_json:
-          description: The updated composer.json contents as a JSON object.
-          type: object
+      additionalProperties: true
 
     ErrorResponse:
       type: object

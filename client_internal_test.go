@@ -1,5 +1,7 @@
+//spellchecker:words drupalupdate
 package drupalupdate
 
+//spellchecker:words reflect testing
 import (
 	"reflect"
 	"testing"

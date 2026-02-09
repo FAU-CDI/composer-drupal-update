@@ -1,10 +1,15 @@
+//spellchecker:words main
 package main
 
+//spellchecker:words bufio context encoding json errors path filepath strings github composer drupal update drupalupdate
 import (
 	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	drupalupdate "github.com/FAU-CDI/composer-drupal-update"
@@ -18,7 +23,7 @@ func main() {
 
 	filePath := os.Args[1]
 
-	composer, err := drupalupdate.ReadComposerJSON(filePath)
+	composer, err := readComposerJSON(filePath)
 	if err != nil {
 		fmt.Printf("Error reading composer.json: %v\n", err)
 		os.Exit(1)
@@ -30,7 +35,7 @@ func main() {
 	ctx := context.Background()
 
 	// Process Drupal Core
-	corePkgs := drupalupdate.CorePackages(composer)
+	corePkgs := composer.CorePackages()
 	if len(corePkgs) > 0 {
 		fmt.Println("\n=== Drupal Core ===")
 		fmt.Print("  Packages: ")
@@ -60,7 +65,7 @@ func main() {
 	}
 
 	// Process Drupal packages
-	drupalPkgs := drupalupdate.DrupalPackages(composer)
+	drupalPkgs := composer.DrupalPackages()
 	if len(drupalPkgs) > 0 {
 		fmt.Println("\n=== Drupal Packages ===")
 		for _, pkg := range drupalPkgs {
@@ -83,7 +88,7 @@ func main() {
 	}
 
 	// Process Composer (non-Drupal) packages
-	composerPkgs := drupalupdate.ComposerPackages(composer)
+	composerPkgs := composer.ComposerPackages()
 	if len(composerPkgs) > 0 {
 		fmt.Println("\n=== Composer Packages ===")
 		for _, pkg := range composerPkgs {
@@ -106,7 +111,7 @@ func main() {
 	}
 
 	if changed {
-		if err := drupalupdate.WriteComposerJSON(filePath, composer); err != nil {
+		if err := writeComposerJSON(filePath, composer); err != nil {
 			fmt.Printf("Error writing composer.json: %v\n", err)
 			os.Exit(1)
 		}
@@ -152,4 +157,55 @@ func selectVersion(reader *bufio.Reader, packageName, currentVersion string, rel
 
 		fmt.Println("  Invalid choice. Try again.")
 	}
+}
+
+var errInvalidPath = errors.New("invalid path")
+
+// readComposerJSON reads a composer.json file from the given path.
+func readComposerJSON(path string) (c *drupalupdate.ComposerJSON, e error) {
+	path = filepath.Clean(path)
+	if path == "" || path == "." || strings.Contains(path, "..") {
+		return nil, fmt.Errorf("%w: %s", errInvalidPath, path)
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", path, err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			e = errors.Join(e, err)
+		}
+	}()
+
+	var composer drupalupdate.ComposerJSON
+	err = json.NewDecoder(file).Decode(&composer)
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", path, err)
+	}
+	return &composer, nil
+}
+
+// writeComposerJSON writes a composer.json file to the given path.
+func writeComposerJSON(path string, composer *drupalupdate.ComposerJSON) (e error) {
+	path = filepath.Clean(path)
+	if path == "" || path == "." || strings.Contains(path, "..") {
+		return fmt.Errorf("%w: %s", errInvalidPath, path)
+	}
+
+	file, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("create %s: %w", path, err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			e = errors.Join(e, err)
+		}
+	}()
+
+	err = json.NewEncoder(file).Encode(composer)
+	if err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+	return nil
 }

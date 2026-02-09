@@ -1,5 +1,7 @@
+//spellchecker:words main
 package main
 
+//spellchecker:words flag http time github composer drupal update drupalupdate swaggest swgui
 import (
 	"flag"
 	"fmt"
@@ -52,7 +54,7 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
-		IdleTimeout:      120 * time.Second,
+		IdleTimeout:       120 * time.Second,
 	}
 	fmt.Printf("Starting server on %s\n", *addr)
 	log.Fatal(srv.ListenAndServe())

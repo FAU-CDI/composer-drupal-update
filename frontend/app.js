@@ -35,30 +35,30 @@ let editing = false;
 // DOM Elements
 // =============================================================================
 
-const textarea       = /** @type {HTMLTextAreaElement} */ (document.getElementById("composer-textarea"));
-const statusEl       = /** @type {HTMLParagraphElement} */ (document.getElementById("status"));
-const packagesBody   = /** @type {HTMLTableSectionElement} */ (document.getElementById("packages-body"));
-const dropZone       = /** @type {HTMLDivElement} */ (document.getElementById("drop-zone"));
-const fileInput      = /** @type {HTMLInputElement} */ (document.getElementById("file-input"));
-const btnEdit        = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
-const btnDownload    = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
-const btnApply       = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
-const btnRevert      = /** @type {HTMLButtonElement} */ (document.getElementById("btn-revert"));
-const commandsEmpty       = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
-const commandsApplySection  = /** @type {HTMLDivElement} */ (document.getElementById("commands-apply-section"));
-const commandsApplyOutput   = /** @type {HTMLPreElement} */ (document.getElementById("commands-apply-output"));
-const btnCopyApply          = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-apply"));
+const textarea = /** @type {HTMLTextAreaElement} */ (document.getElementById("composer-textarea"));
+const statusEl = /** @type {HTMLParagraphElement} */ (document.getElementById("status"));
+const packagesBody = /** @type {HTMLTableSectionElement} */ (document.getElementById("packages-body"));
+const dropZone = /** @type {HTMLDivElement} */ (document.getElementById("drop-zone"));
+const fileInput = /** @type {HTMLInputElement} */ (document.getElementById("file-input"));
+const btnEdit = /** @type {HTMLButtonElement} */ (document.getElementById("btn-edit"));
+const btnDownload = /** @type {HTMLButtonElement} */ (document.getElementById("btn-download"));
+const btnApply = /** @type {HTMLButtonElement} */ (document.getElementById("btn-apply"));
+const btnRevert = /** @type {HTMLButtonElement} */ (document.getElementById("btn-revert"));
+const commandsEmpty = /** @type {HTMLParagraphElement} */ (document.getElementById("commands-empty"));
+const commandsApplySection = /** @type {HTMLDivElement} */ (document.getElementById("commands-apply-section"));
+const commandsApplyOutput = /** @type {HTMLPreElement} */ (document.getElementById("commands-apply-output"));
+const btnCopyApply = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-apply"));
 const commandsDryrunSection = /** @type {HTMLDivElement} */ (document.getElementById("commands-dryrun-section"));
-const commandsDryrunOutput  = /** @type {HTMLPreElement} */ (document.getElementById("commands-dryrun-output"));
-const btnCopyDryrun         = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-dryrun"));
-const btnCopyJson           = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-json"));
-const tabPackages    = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
+const commandsDryrunOutput = /** @type {HTMLPreElement} */ (document.getElementById("commands-dryrun-output"));
+const btnCopyDryrun = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-dryrun"));
+const btnCopyJson = /** @type {HTMLButtonElement} */ (document.getElementById("btn-copy-json"));
+const tabPackages = /** @type {HTMLButtonElement} */ (document.querySelector('[data-tab="tab-packages"]'));
 
 // =============================================================================
 // Tabs
 // =============================================================================
 
-const tabs   = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab"));
+const tabs = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll(".tab"));
 const panels = /** @type {NodeListOf<HTMLElement>} */ (document.querySelectorAll(".tab-panel"));
 
 /**
@@ -257,7 +257,7 @@ async function applyVersions() {
 
   try {
     const data = await updateComposer(composerJSON, versions);
-    textarea.value = JSON.stringify(data.composer_json, null, 4);
+    textarea.value = JSON.stringify(data, null, 4);
     setStatus("Updated " + Object.keys(versions).length + " package(s). Reloading table...");
     await loadComposer();
   } catch (e) {

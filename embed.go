@@ -1,5 +1,7 @@
+//spellchecker:words drupalupdate
 package drupalupdate
 
+//spellchecker:words embed
 import (
 	"embed"
 	"fmt"

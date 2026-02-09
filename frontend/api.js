@@ -37,8 +37,7 @@
  */
 
 /**
- * @typedef {Object} UpdateResponse
- * @property {Record<string, any>} composer_json
+ * @typedef {Record<string, any>} UpdateResponse
  */
 
 /**
