@@ -12,8 +12,8 @@ import (
 // API Request/Response Types
 // =============================================================================
 
-// ParseRequest is the request body for POST /api/parse.
-type ParseRequest struct {
+// parseRequest is the request body for POST /api/parse.
+type parseRequest struct {
 	ComposerJSON ComposerJSON `json:"composer_json"`
 }
 
@@ -76,7 +76,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // handleParse accepts a composer.json and returns all updatable packages,
 // split into Drupal and Composer (non-Drupal) categories.
 func (s *Server) handleParse(w http.ResponseWriter, r *http.Request) {
-	var req ParseRequest
+	var req parseRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		s.writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "invalid JSON: " + err.Error()})
 		return
@@ -98,7 +98,7 @@ func (s *Server) handleReleases(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	releases, err := s.Client.FetchReleasesForPackage(r.Context(), pkg)
+	releases, err := s.Client.FetchReleases(r.Context(), pkg)
 	if err != nil {
 		s.writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: "failed to fetch releases: " + err.Error()})
 		return

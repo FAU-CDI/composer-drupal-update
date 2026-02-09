@@ -130,9 +130,12 @@ func drupalModuleName(pkg string) (name string, ok bool) {
 }
 
 // isSkippablePackage returns true for packages that should not be offered
-// for version updates. This includes PHP itself, PHP extensions, and Drupal
+// for version updates. This includes invalid package names, PHP itself, PHP extensions, and Drupal
 // core infrastructure packages.
 func isSkippablePackage(pkg string) bool {
+	if checkPackageName(pkg) != nil {
+		return true
+	}
 	if pkg == "php" || pkg == "composer" || strings.HasPrefix(pkg, "ext-") || strings.HasPrefix(pkg, "lib-") {
 		return true
 	}

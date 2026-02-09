@@ -47,7 +47,7 @@ func main() {
 		}
 		fmt.Println()
 
-		releases, err := client.FetchReleases(ctx, "drupal")
+		releases, err := client.FetchDrupalReleases(ctx, "drupal")
 		switch {
 		case err != nil:
 			fmt.Printf("  Could not fetch core releases: %v\n", err)
@@ -69,7 +69,7 @@ func main() {
 	if len(drupalPkgs) > 0 {
 		fmt.Println("\n=== Drupal Packages ===")
 		for _, pkg := range drupalPkgs {
-			releases, err := client.FetchReleases(ctx, pkg.Module)
+			releases, err := client.FetchDrupalReleases(ctx, pkg.Module)
 			if err != nil {
 				fmt.Printf("  [%s] Could not fetch releases: %v\n", pkg.Name, err)
 				continue

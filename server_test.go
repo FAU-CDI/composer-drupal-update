@@ -45,7 +45,10 @@ func newTestServer(t *testing.T) (*drupalupdate.Server, func()) {
 		http.NotFound(w, r)
 	}))
 
-	client := drupalupdate.NewClientWithHTTP(drupalMock.URL, packagistMock.URL, &http.Client{})
+	client := drupalupdate.NewClient()
+	client.DrupalBaseURL = drupalMock.URL
+	client.PackagistBaseURL = packagistMock.URL
+
 	server := drupalupdate.NewServer(client)
 
 	return server, func() {
